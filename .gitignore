@@ -1,0 +1,12 @@
+.DAV
+*/.DAV
+
+.env
+
+# Ignore database files
+.database/server.db
+.database/schema.ts
+.database/.backups
+
+node_modules
+dist

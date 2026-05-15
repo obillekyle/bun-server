@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "paths": {
+      "@utils/*": ["./utils/*"]
+    }
+  },
+  "include": ["**/*.ts", ".server/client.d.ts"],
+  "exclude": [
+    ".server/**/*.ts",
+    ".database/**/*.ts",
+    "api/**/*.ts",
+    "serve.ts",
+    "server.config.ts"
+  ]
+}

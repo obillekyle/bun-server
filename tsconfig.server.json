@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "types": ["bun-types"],
+    "paths": {
+      "@server/*": ["./.server/*"],
+      "@database/*": ["./.database/*"],
+      "@api/*": ["./api/*"]
+    }
+  },
+  "include": [
+    ".server/**/*.ts",
+    ".database/**/*.ts",
+    "api/**/*.ts",
+    "server.config.ts",
+    ".server/serve.ts"
+  ],
+  "exclude": [".server/client.d.ts"]
+}
