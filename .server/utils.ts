@@ -55,9 +55,41 @@ export async function tryCatch<T = any>(
     .catch((error) => [error, null]) as Promise<[any, T]>;
 }
 
+async function checkLimit(req: Request) {
+  const MAX_BODY_SIZE = 20 * 1024 * 1024; // 20MB
+
+  const contentLength = req.headers.get('content-length');
+  if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) {
+    throw new Error('Payload Too Large');
+  }
+
+  if (!req.body) return;
+
+  const reader = req.body.getReader();
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      totalBytes += value.length;
+
+      if (totalBytes > MAX_BODY_SIZE) {
+        await reader.cancel();
+        throw new Error('Payload Too Large');
+      }
+    }
+  } catch (err) {
+    throw err;
+  }
+}
+
 export async function processBody(
   req: Request,
 ): Promise<Record<string, any> | string> {
+  await checkLimit(req);
+
   switch (req.method) {
     case 'GET':
       const url = new URL(req.url);
@@ -77,6 +109,16 @@ export async function processBody(
         case type.includes('multipart/form-data'):
           const formData = await req.formData();
           return Object.fromEntries(formData.entries());
+
+        // if blob or image, return as is
+        case type.includes('application/'):
+        case type.includes('audio/'):
+        case type.includes('video/'):
+        case type.includes('model/'):
+        case type.includes('image/'):
+          return {
+            file: await req.blob(),
+          };
 
         default:
           return await req.text();

@@ -1,5 +1,5 @@
 export default defineConfig({
   port: 3000,
-  scripts: ['/script/global.ts'],
+  scripts: [],
   styles: ['/styles/global.css'],
 });

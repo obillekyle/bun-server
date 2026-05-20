@@ -5,6 +5,7 @@ declare global {
   var any: <T = any>(v: any) => T;
   var repeat: typeof import('./utils').repeat;
   var tryCatch: typeof import('./utils').tryCatch;
+  var randomId: (length?: number) => string;
 
   var request: <T = any>(
     url: string,
@@ -26,7 +27,11 @@ declare global {
     data: T;
   };
 
-  type Wrapped<T> = T | (() => T);
+  type Wrapped<T = any> = T | (() => T);
+  type Constructor<T = any> = new (...args: any[]) => T;
+  type Constructable<T = any> = Constructor<T>;
+  type Callable<T = any> = (...args: any[]) => T;
+  type Hybrid<T = any> = Constructor<T> & Callable<T>;
 }
 
 export {};

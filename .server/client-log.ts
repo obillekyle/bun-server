@@ -52,7 +52,7 @@ function connect() {
         log({
           msg,
           level: data.level,
-          by: 'console',
+          by: data.by || 'client',
         });
     } catch (err) {}
   };

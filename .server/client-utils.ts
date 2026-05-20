@@ -1,7 +1,5 @@
-/// <reference path="../.server/client.d.ts" />
-
-const _matchDefault = Symbol('matchDefault');
-const _match = (value: any, cases: any) => {
+const matchDefault = Symbol('matchDefault');
+const match = (value: any, cases: any) => {
   const isString = typeof value === 'string';
   const isArray = Array.isArray(cases);
 
@@ -35,10 +33,10 @@ const _match = (value: any, cases: any) => {
   return undefined;
 };
 
-_match.default = _matchDefault;
-_match[Symbol.toPrimitive] = () => _matchDefault;
+match.default = matchDefault;
+match[Symbol.toPrimitive] = () => matchDefault;
 
-const _tryCatch = async <T = any>(
+const tryCatch = async <T = any>(
   promise: Wrapped<Promise<T>>,
 ): Promise<[Error, null] | [null, T]> => {
   const unwrapped = promise instanceof Function ? promise() : promise;
@@ -51,13 +49,13 @@ const _tryCatch = async <T = any>(
   }
 };
 
-const _assert = (condition: any, message?: string): asserts condition => {
+const assert = (condition: any, message?: string): asserts condition => {
   if (!condition) {
     throw new Error(message || 'Assertion failed');
   }
 };
-const _any = <T = any>(v: any): T => v;
-const _repeat = (n: number, fn?: (i: number) => any): any[] =>
+const any = <T = any>(v: any): T => v;
+const repeat = (n: number, fn?: (i: number) => any): any[] =>
   Array.from({ length: n }, (_, k) => (fn ? fn(k) : k));
 
 function processGetBody(
@@ -83,10 +81,11 @@ function processGetBody(
   }
 }
 
-async function _request(
-  url: string,
-  init?: RequestJson,
-): Promise<JsonResponse> {
+function randomId(length = 8) {
+  return Math.random().toString(36).slice(2, length);
+}
+
+async function request(url: string, init?: RequestJson): Promise<JsonResponse> {
   const method = init?.method?.toUpperCase() || 'GET';
   const body = init?.body || {};
   let initReq: any;
@@ -117,7 +116,7 @@ async function _request(
   }
 
   const response = await fetch(url, initReq);
-  const [err, data] = await _tryCatch(response.json.bind(response));
+  const [err, data] = await tryCatch(response.json.bind(response));
 
   if (err) {
     throw new Error(`Request failed: ${err.message || 'Unknown error'}`);
@@ -132,11 +131,14 @@ async function _request(
 }
 
 Object.assign(globalThis, {
-  match: _match,
-  matchDefault: _matchDefault,
-  tryCatch: _tryCatch,
-  assert: _assert,
-  any: _any,
-  repeat: _repeat,
-  request: _request,
+  match,
+  matchDefault,
+  tryCatch,
+  assert,
+  any,
+  repeat,
+  request,
+  randomId,
 });
+
+export {};

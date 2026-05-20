@@ -1,4 +1,6 @@
 const logLevels = ['info', 'warn', 'error', 'fatal', 'debug', 'trace'] as const;
+const byLength = 15;
+
 export type LogLevels = (typeof logLevels)[number];
 
 export type LoggerEntry = {
@@ -23,7 +25,10 @@ export function log(
 ) {
   const color = levelColors[level] || levelColors['info'];
   const lvTag = `[${level.charAt(0).toUpperCase()}]`;
-  const byPad = by.length <= 10 ? by.padEnd(10) : by.substring(0, 7) + '...';
+  const byPad =
+    by.length <= byLength
+      ? by.padEnd(byLength)
+      : by.substring(0, byLength - 3) + '...';
 
   console.write(
     `${color}${lvTag} ${byPad}${levelColors['reset']} ${msg}${newLine ? '\n' : ''}`,

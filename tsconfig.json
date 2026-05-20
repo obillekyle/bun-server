@@ -5,6 +5,10 @@
     "module": "Preserve",
     "moduleDetection": "force",
 
+    "jsx": "react",
+    "jsxFactory": "createElement",
+    "jsxFragmentFactory": "Fragment",
+
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
@@ -14,9 +18,11 @@
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
+    "esModuleInterop": true,
 
     "noUnusedLocals": false,
     "noUnusedParameters": false,
+    "forceConsistentCasingInFileNames": true,
     "noPropertyAccessFromIndexSignature": false,
 
     "paths": {

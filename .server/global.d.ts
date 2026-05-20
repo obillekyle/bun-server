@@ -182,3 +182,135 @@ var match: typeof import('./utils').match;
 var assert: (condition: any, message?: string) => asserts condition;
 
 var defineConfig: (config: AppConfig) => AppConfig;
+var html: typeof import('./jsx').html;
+var createElement: typeof import('./jsx').createElement;
+var Fragment: typeof import('./jsx').Fragment;
+
+declare namespace JSX {
+  type Element = string | Promise<string>;
+
+  interface ElementChildrenAttribute {
+    children: {};
+  }
+
+  interface HTMLAttributes {
+    class?: string;
+    className?: string; // Included just in case React muscle memory kicks in!
+    id?: string;
+    style?: string | Record<string, string | number>;
+    children?: any;
+    tabindex?: number | string;
+    title?: string;
+
+    // Auto-complete support for data and aria attributes
+    [key: `data-${string}`]: string | undefined;
+    [key: `aria-${string}`]: string | undefined;
+
+    // Catch-all for everything else (HTMX, Alpine.js, custom elements, etc.)
+    [key: string]: any;
+  }
+
+  // --- Specific Element Attributes ---
+  interface AnchorAttributes extends HTMLAttributes {
+    href?: string;
+    target?: string;
+    rel?: string;
+  }
+  interface ImgAttributes extends HTMLAttributes {
+    src?: string;
+    alt?: string;
+    width?: string | number;
+    height?: string | number;
+    loading?: 'lazy' | 'eager';
+  }
+  interface InputAttributes extends HTMLAttributes {
+    type?: string;
+    value?: any;
+    name?: string;
+    placeholder?: string;
+    disabled?: boolean;
+    required?: boolean;
+    checked?: boolean;
+    autocomplete?: string;
+  }
+  interface FormAttributes extends HTMLAttributes {
+    action?: string;
+    method?: 'GET' | 'POST' | 'get' | 'post';
+    enctype?: string;
+  }
+  interface ScriptAttributes extends HTMLAttributes {
+    src?: string;
+    type?: string;
+    defer?: boolean;
+    async?: boolean;
+  }
+  interface LinkAttributes extends HTMLAttributes {
+    rel?: string;
+    href?: string;
+    as?: string;
+    type?: string;
+  }
+  interface MetaAttributes extends HTMLAttributes {
+    name?: string;
+    content?: string;
+    charset?: string;
+    property?: string;
+  }
+
+  // --- The Global Tag Map ---
+  interface IntrinsicElements {
+    // Document basics
+    html: HTMLAttributes & { lang?: string };
+    head: HTMLAttributes;
+    body: HTMLAttributes;
+    title: HTMLAttributes;
+    meta: MetaAttributes;
+    link: LinkAttributes;
+    script: ScriptAttributes;
+
+    // Core structure
+    div: HTMLAttributes;
+    span: HTMLAttributes;
+    p: HTMLAttributes;
+    h1: HTMLAttributes;
+    h2: HTMLAttributes;
+    h3: HTMLAttributes;
+    h4: HTMLAttributes;
+    h5: HTMLAttributes;
+    h6: HTMLAttributes;
+    ul: HTMLAttributes;
+    ol: HTMLAttributes;
+    li: HTMLAttributes;
+
+    // Interactive & Media
+    a: AnchorAttributes;
+    img: ImgAttributes;
+    button: HTMLAttributes & {
+      type?: 'button' | 'submit' | 'reset';
+      disabled?: boolean;
+    };
+    input: InputAttributes;
+    textarea: InputAttributes & {
+      rows?: number | string;
+      cols?: number | string;
+    };
+    form: FormAttributes;
+    select: HTMLAttributes & {
+      name?: string;
+      disabled?: boolean;
+      required?: boolean;
+      multiple?: boolean;
+    };
+    option: HTMLAttributes & {
+      value?: any;
+      selected?: boolean;
+      disabled?: boolean;
+    };
+
+    br: HTMLAttributes;
+    hr: HTMLAttributes;
+
+    // 🛡️ The Ultimate Fallback: Automatically supports nav, main, footer, svg, etc!
+    [elemName: string]: HTMLAttributes;
+  }
+}

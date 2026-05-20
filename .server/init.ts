@@ -1,6 +1,7 @@
 import { DB } from '../.database/connection';
 import { Logger, log } from './logger';
 import { match } from './utils';
+import { html, createElement, Fragment } from './jsx';
 
 Object.assign(globalThis, {
   respond: (callback: any) => callback,
@@ -13,4 +14,7 @@ Object.assign(globalThis, {
   log,
   DB,
   Logger,
+  createElement,
+  Fragment,
+  html,
 });

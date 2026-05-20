@@ -168,7 +168,7 @@ code {
 }
 
 /* Buttons */
-button {
+button, .primary-btn, .secondary-btn {
   cursor: pointer;
   font-family: var(--font-sans);
   font-weight: 600;
@@ -178,6 +178,10 @@ button {
   border: none;
   transition: all 0.2s ease;
   width: 100%;
+  display: inline-block;
+  text-decoration: none;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .primary-btn {
