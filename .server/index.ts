@@ -71,31 +71,52 @@ let server: any;
 // ==========================================
 
 async function syncTSConfigPaths() {
-  const tsConfigPath = './tsconfig.app.json';
   try {
-    let tsConfig: any = { compilerOptions: { paths: {} } };
-    const file = Bun.file(tsConfigPath);
-
-    if (await file.exists()) tsConfig = await file.json().catch(() => tsConfig);
-
-    tsConfig.compilerOptions = tsConfig.compilerOptions || {};
-    delete tsConfig.compilerOptions.baseUrl;
-
-    const oldPaths = JSON.stringify(tsConfig.compilerOptions.paths || {});
     const newPaths: Record<string, string[]> = {};
 
     for (const [key, val] of Object.entries(userImportMap)) {
       const tsKey = key.endsWith('/') ? key.slice(0, -1) + '/*' : key;
       let tsVal = val.startsWith('/') ? '.' + val : val;
+      if (!tsVal.startsWith('./')) tsVal = './' + tsVal;
       tsVal = tsVal.endsWith('/') ? tsVal.slice(0, -1) + '/*' : tsVal;
+      if (!tsVal.endsWith('/*')) tsVal += '/*';
       newPaths[tsKey] = [tsVal];
     }
 
-    if (oldPaths === JSON.stringify(newPaths)) return;
+    let changed = false;
 
-    tsConfig.compilerOptions.paths = newPaths;
-    await Bun.write(tsConfigPath, JSON.stringify(tsConfig, null, 2));
-    serveLog.TSCONFIG_SYNCED();
+    const appPath = './tsconfig.app.json';
+    let appConfig: any = { compilerOptions: { paths: {} } };
+    if (await Bun.file(appPath).exists()) appConfig = await Bun.file(appPath).json().catch(() => appConfig);
+    appConfig.compilerOptions = appConfig.compilerOptions || {};
+    delete appConfig.compilerOptions.baseUrl;
+    
+    if (JSON.stringify(appConfig.compilerOptions.paths || {}) !== JSON.stringify(newPaths)) {
+      appConfig.compilerOptions.paths = newPaths;
+      await Bun.write(appPath, JSON.stringify(appConfig, null, 2));
+      changed = true;
+    }
+
+    const rootPath = './tsconfig.json';
+    let rootConfig: any = { compilerOptions: { paths: {} } };
+    if (await Bun.file(rootPath).exists()) {
+      try {
+        const text = await Bun.file(rootPath).text();
+        const stripped = text.replace(new RegExp('//.*$', 'gm'), '').replace(new RegExp('/\\\\*[\\\\s\\\\S]*?\\\\*/', 'g'), '');
+        rootConfig = JSON.parse(stripped);
+      } catch (e) {}
+    }
+    rootConfig.compilerOptions = rootConfig.compilerOptions || {};
+    
+    const mergedRootPaths = { ...(rootConfig.compilerOptions.paths || {}), ...newPaths };
+    
+    if (JSON.stringify(rootConfig.compilerOptions.paths || {}) !== JSON.stringify(mergedRootPaths)) {
+      rootConfig.compilerOptions.paths = mergedRootPaths;
+      await Bun.write(rootPath, JSON.stringify(rootConfig, null, 2));
+      changed = true;
+    }
+
+    if (changed) serveLog.TSCONFIG_SYNCED();
     //
   } catch (err: any) {
     serveLog.UNHANDLED_ERR({ error: 'TSConfig sync error: ' + errorMsg(err) });
@@ -140,9 +161,15 @@ async function setupConfig() {
   if (module?.default) {
     updateConfig({ ...serverConfig, ...module.default });
   }
-  userImportMap = module?.default?.importMap
-    ? { ...module.default.importMap }
-    : userImportMap;
+
+  const rawMap = module?.default?.importMap || {};
+  userImportMap = {};
+  for (const [k, v] of Object.entries(rawMap)) {
+    let bv = String(v);
+    if (bv.startsWith('./')) bv = bv.slice(1);
+    if (!bv.startsWith('/') && !bv.startsWith('http')) bv = '/' + bv;
+    userImportMap[k] = bv;
+  }
 
   if (!isDevWorker) {
     if (configExists && module?.default) serveLog.CONFIG_LOADED();
