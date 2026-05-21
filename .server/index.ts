@@ -47,7 +47,14 @@ const blockedExtensions = [
   '.yml',
   '.lock',
 ];
-const blockedDirs = ['.server', '.database', '.dashboard', '_internal', '.git', '.vscode'];
+const blockedDirs = [
+  '.server',
+  '.database',
+  '.dashboard',
+  '_internal',
+  '.git',
+  '.vscode',
+];
 const blockedSubstrings = ['..', '\0'];
 
 // ==========================================
@@ -87,11 +94,17 @@ async function syncTSConfigPaths() {
 
     const appPath = './tsconfig.app.json';
     let appConfig: any = { compilerOptions: { paths: {} } };
-    if (await Bun.file(appPath).exists()) appConfig = await Bun.file(appPath).json().catch(() => appConfig);
+    if (await Bun.file(appPath).exists())
+      appConfig = await Bun.file(appPath)
+        .json()
+        .catch(() => appConfig);
     appConfig.compilerOptions = appConfig.compilerOptions || {};
     delete appConfig.compilerOptions.baseUrl;
-    
-    if (JSON.stringify(appConfig.compilerOptions.paths || {}) !== JSON.stringify(newPaths)) {
+
+    if (
+      JSON.stringify(appConfig.compilerOptions.paths || {}) !==
+      JSON.stringify(newPaths)
+    ) {
       appConfig.compilerOptions.paths = newPaths;
       await Bun.write(appPath, JSON.stringify(appConfig, null, 2));
       changed = true;
@@ -102,15 +115,23 @@ async function syncTSConfigPaths() {
     if (await Bun.file(rootPath).exists()) {
       try {
         const text = await Bun.file(rootPath).text();
-        const stripped = text.replace(new RegExp('//.*$', 'gm'), '').replace(new RegExp('/\\\\*[\\\\s\\\\S]*?\\\\*/', 'g'), '');
+        const stripped = text
+          .replace(new RegExp('//.*$', 'gm'), '')
+          .replace(new RegExp('/\\\\*[\\\\s\\\\S]*?\\\\*/', 'g'), '');
         rootConfig = JSON.parse(stripped);
       } catch (e) {}
     }
     rootConfig.compilerOptions = rootConfig.compilerOptions || {};
-    
-    const mergedRootPaths = { ...(rootConfig.compilerOptions.paths || {}), ...newPaths };
-    
-    if (JSON.stringify(rootConfig.compilerOptions.paths || {}) !== JSON.stringify(mergedRootPaths)) {
+
+    const mergedRootPaths = {
+      ...(rootConfig.compilerOptions.paths || {}),
+      ...newPaths,
+    };
+
+    if (
+      JSON.stringify(rootConfig.compilerOptions.paths || {}) !==
+      JSON.stringify(mergedRootPaths)
+    ) {
       rootConfig.compilerOptions.paths = mergedRootPaths;
       await Bun.write(rootPath, JSON.stringify(rootConfig, null, 2));
       changed = true;
@@ -121,30 +142,6 @@ async function syncTSConfigPaths() {
   } catch (err: any) {
     serveLog.UNHANDLED_ERR({ error: 'TSConfig sync error: ' + errorMsg(err) });
   }
-}
-
-async function autoMapNodeModules() {
-  const pkgPath = process.cwd() + '/package.json';
-  const file = Bun.file(pkgPath);
-
-  if (!(await file.exists())) return;
-
-  const pkg = await file.json();
-  const deps = Object.keys(pkg.dependencies || {});
-
-  for (const dep of deps) {
-    autoImportMap[`${dep}/`] = `/node_modules/${dep}/`;
-    const depPkgPath = process.cwd() + `/node_modules/${dep}/package.json`;
-    const file = Bun.file(depPkgPath);
-
-    if (!(await file.exists())) continue;
-
-    const depPkg = await file.json();
-    let mod = depPkg.module || depPkg.browser || depPkg.main || 'index.js';
-    autoImportMap[dep] = `/node_modules/${dep}/${mod.replace(/^\.\//, '')}`;
-  }
-
-  if (deps.length > 0) serveLog.AUTO_MAP({ count: deps.length });
 }
 
 async function setupConfig() {
@@ -162,26 +159,15 @@ async function setupConfig() {
     updateConfig({ ...serverConfig, ...module.default });
   }
 
-  const rawMap = module?.default?.importMap || {};
-  userImportMap = {};
-  for (const [k, v] of Object.entries(rawMap)) {
-    let bv = String(v);
-    if (bv.startsWith('./')) bv = bv.slice(1);
-    if (!bv.startsWith('/') && !bv.startsWith('http')) bv = '/' + bv;
-    userImportMap[k] = bv;
-  }
+  userImportMap = module?.default?.importMap
+    ? { ...module.default.importMap }
+    : userImportMap;
 
   if (!isDevWorker) {
     if (configExists && module?.default) serveLog.CONFIG_LOADED();
 
     await syncTSConfigPaths();
-    await autoMapNodeModules();
   }
-
-  updateConfig({
-    ...serverConfig,
-    importMap: { ...autoImportMap, ...serverConfig.importMap },
-  });
 }
 
 // ==========================================

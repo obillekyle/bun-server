@@ -1,9 +1,52 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { serverConfig } from '../utils/config';
 
 const jsMod = (src = '') => `\n <script type="module" src="${src}"></script>\n`;
 const jsMap = (map: any) =>
   `\n <script type="importmap">\n${JSON.stringify({ imports: map }, null, 2)}\n</script>\n`;
+
+let importMapCache: Record<string, string>;
+let nodeModulesMap: Record<string, string>;
+
+function getNodeModulesMap() {
+  if (nodeModulesMap !== null) return nodeModulesMap;
+  nodeModulesMap = {};
+  try {
+    const pkgPath = process.cwd() + '/package.json';
+    if (!existsSync(pkgPath)) return nodeModulesMap;
+
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    const deps = Object.keys(pkg.dependencies || {});
+
+    for (const dep of deps) {
+      nodeModulesMap[`${dep}/`] = `/node_modules/${dep}/`;
+      const depPkgPath = process.cwd() + `/node_modules/${dep}/package.json`;
+      if (!existsSync(depPkgPath)) continue;
+
+      const depPkg = JSON.parse(readFileSync(depPkgPath, 'utf8'));
+      let mod = depPkg.module || depPkg.browser || depPkg.main || 'index.js';
+      nodeModulesMap[dep] = `/node_modules/${dep}/${mod.replace(/^\.\//, '')}`;
+    }
+  } catch (e) {}
+  return nodeModulesMap;
+}
+
+export function getImportMap() {
+  if (importMapCache) return importMapCache;
+
+  const rawImportMap = serverConfig.importMap || {};
+
+  const importMap: Record<string, string> = { ...getNodeModulesMap() };
+  for (const [k, v] of Object.entries(rawImportMap)) {
+    let bv = String(v);
+    if (bv.startsWith('./')) bv = bv.slice(1);
+    if (!bv.startsWith('/') && !bv.startsWith('http')) bv = '/' + bv;
+    importMap[k] = bv;
+  }
+
+  importMapCache = importMap;
+  return importMapCache;
+}
 
 export function assembleHtml(
   html: string,
@@ -67,7 +110,7 @@ export function assembleHtml(
     }
   }
 
-  const importMap = serverConfig.importMap || {};
+  const importMap = getImportMap();
 
   html = /(<head[^>]*>)/i.test(html)
     ? html.replace(/(<head[^>]*>)/i, '$1' + jsMap(importMap) + headInjects)
