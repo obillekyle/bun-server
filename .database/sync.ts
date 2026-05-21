@@ -1,7 +1,7 @@
 import '@server/init';
 
 import { connection } from './conn';
-import { toSnakeCase, toCamelCase } from '@server/strings';
+import { toSnakeCase, toCamelCase } from '@server/utils/strings';
 import { Logger } from '@server/logger';
 import { match, tryCatch } from '@server/utils';
 import { messageLogger } from '@server/logger';

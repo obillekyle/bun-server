@@ -1,7 +1,9 @@
-import { messageLogger } from '@server/logger';
+import { Logger, messageLogger } from '@server/logger';
 import { tryCatch } from '@server/utils';
 import { mkdir, copyFile, readdir } from 'fs/promises';
+import path from 'path';
 import config from '../server.config';
+import { connection } from './conn';
 
 const MESSAGES = messageLogger(new Logger('db-backup'), {
   BACKUP_CREATED: 'I Created database backup: {file}',
@@ -10,11 +12,19 @@ const MESSAGES = messageLogger(new Logger('db-backup'), {
 } as const);
 
 export async function backupDatabase(currentDbVersion: number) {
-  const dbPath = import.meta.dir + '/server.db';
-  const backupDir = import.meta.dir + '/.backups';
+  const dbPath = connection.filename;
+
+  // Skip in-memory databases
+  if (dbPath === ':memory:' || !dbPath) {
+    return;
+  }
+
+  const ext = path.extname(dbPath);
+  const base = path.basename(dbPath, ext);
+  const backupDir = path.dirname(dbPath) + '/.backups';
 
   const timestamp = Date.now();
-  const backupName = `server.v${currentDbVersion}.${timestamp}.db`;
+  const backupName = `${base}.v${currentDbVersion}.${timestamp}${ext}`;
   const backupPath = backupDir + '/' + backupName;
 
   const [err] = await tryCatch(async () => {
@@ -28,22 +38,30 @@ export async function backupDatabase(currentDbVersion: number) {
 
       if (configCount > 0) {
         const files = await readdir(backupDir);
+        
+        // Escape special characters in base name and extension for Regex matching
+        const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escapedExt = ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`^${escapedBase}\\.v${currentDbVersion}\\.(\\d+)${escapedExt}$`);
+
         const backupFiles = files
-          .filter((f) => f.startsWith(`server.v${currentDbVersion}.`))
-          .map((f) => ({ name: f, time: Number(f.split('.')[2]) || 0 }))
+          .map((f) => {
+            const match = f.match(regex);
+            return match ? { name: f, time: Number(match[1]) || 0 } : null;
+          })
+          .filter((item): item is { name: string; time: number } => item !== null)
           .sort((a, b) => b.time - a.time);
 
         const oldBackups = backupFiles.slice(configCount);
 
-        if (oldBackups.length > 0) return;
-
-        await Promise.all(
-          oldBackups.map((backup) =>
-            Bun.file(backupDir + '/' + backup.name).delete(),
-          ),
-        );
-
-        MESSAGES.BACKUP_CLEANUP({ count: oldBackups.length });
+        if (oldBackups.length > 0) {
+          await Promise.all(
+            oldBackups.map((backup) =>
+              Bun.file(backupDir + '/' + backup.name).delete(),
+            ),
+          );
+          MESSAGES.BACKUP_CLEANUP({ count: oldBackups.length });
+        }
       }
     }
   });
@@ -52,3 +70,4 @@ export async function backupDatabase(currentDbVersion: number) {
     MESSAGES.BACKUP_FAILED({ error: err.message });
   }
 }
+

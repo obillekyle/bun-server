@@ -1,97 +1,96 @@
 # 🎨 Frontend & Asset Management
 
-The Bun Server takes a radically simple approach to frontend development. There is no Vite, no Webpack, and no complex bundler configs. It relies entirely on native browser features and server-side magic.
+The Bun Server uses standard browser modules combined with background server compilation to eliminate traditional bundlers.
 
-## 📂 Where Things Go
+---
 
-- **`index.html`**: The root of your app.
-- **`script/`**: Put your frontend TypeScript or JavaScript here.
-- **`styles/`**: Put your CSS files here.
+## 📂 Asset Placement
 
-## ⚡ The TypeScript Magic
+*   **`index.html`** — Application entrance.
+*   **`script/`** — Frontend TypeScript (`.ts`) and JavaScript (`.js`).
+*   **`styles/`** — CSS files.
 
-You write `.ts` files in your `script/` folder. In your `index.html`, you reference them as `.js`:
+---
 
+## ⚡ TypeScript Serving
+
+You write TypeScript inside `script/`, but link it as JavaScript in your HTML:
 ```html
-<!-- index.html -->
 <script type="module" src="/script/main.js"></script>
 ```
+1.  When `/script/main.js` is requested, the compiler checks for `/script/main.ts` on disk.
+2.  If found, the compiler compiles the TS file to standard JS on the fly.
+3.  The result is cached in memory. File saves automatically clear the cache.
 
-**Wait, what?**
-When the browser requests `/script/main.js`, the Bun server intercepts it, finds `/script/main.ts`, compiles it to raw JavaScript instantly, and serves it. It caches the result, making reloads lightning fast.
+---
 
-## 📦 Using `node_modules` (No Bundler Needed!)
+## 📦 Import Maps (NPM Packages in Browser)
 
-Normally, you can't use NPM packages in the browser without a bundler. We fixed that with **Auto Import Maps**.
-
-### 1. Install a Package
-
-```bash
-bun add canvas-confetti
-```
-
-### 2. Import it directly in your frontend `.ts` file
-
+Use NPM packages directly inside frontend scripts:
 ```typescript
-// script/main.ts
 import confetti from 'canvas-confetti';
-
-document.querySelector('button')?.addEventListener('click', () => {
-  confetti();
-});
 ```
+On server startup, it inspects your `package.json` dependencies and injects an import map into every HTML response header:
+```html
+<script type="importmap"> ... </script>
+```
+This maps bare package imports directly to your local node_modules directory, allowing the browser to resolve and load NPM packages natively.
 
-### How it works:
+---
 
-When the server starts, it scans your `package.json` dependencies and injects an `<script type="importmap">` into your `index.html`. It maps bare imports like `canvas-confetti` to the exact file paths inside `/node_modules/`. The browser natively handles the rest!
+## 💅 CSS Hot-Swapping
 
-## 💅 Styling and Live Reload
-
-Just link your CSS normally:
-
+Link your stylesheets normally:
 ```html
 <link rel="stylesheet" href="/styles/main.css" />
 ```
+In development, saving CSS edits alerts the browser via WebSockets to reload the stylesheet link with a timestamp query parameter. The styles update immediately **without reloading the page**.
 
-If you're running `bun run dev`, changing `styles/main.css` triggers a **Hot Swap**. The WebSocket server tells the browser to append a timestamp to the CSS URL, forcing the browser to fetch the new CSS without reloading the page. It's incredibly fast styling iteration.
+---
 
-## 🏗️ Using Frameworks (React, Vue, Alpine)
+## 🏗️ Server-Side TSX Templating
 
-Because we aren't using a traditional bundler, you can't easily compile JSX (`.tsx` or `.jsx`) or Vue Single File Components (`.vue`) out of the box for the _client-side_.
+We support native server-side `.tsx` templates out of the box using the global `html()` wrapper. 
 
-**However, Server-Side TSX is natively supported!**
-You can create `.tsx` files anywhere in your server (e.g. `jsx.tsx` or `api/page.tsx`) and return server-rendered HTML effortlessly using the global `html()` wrapper. You get React-like templating with zero dependencies.
-
+Create `jsx.tsx`:
 ```tsx
 // jsx.tsx
 export default html((req, body, server) => {
+  const items = ['Alice', 'Bob'];
   return (
-    <div class="hello">
-      <h1>Hello from Server-Side TSX!</h1>
-      <p>This was rendered purely on the server.</p>
-    </div>
+    <html lang="en">
+      <head>
+        <title>Server Page</title>
+        <link rel="stylesheet" href="/styles/global.css" />
+      </head>
+      <body>
+        <h1>Rendered on Server</h1>
+        <ul>
+          {items.map(name => <li>{name}</li>)}
+        </ul>
+        <script type="module" src="/script/main.js"></script>
+      </body>
+    </html>
   );
 });
 ```
 
-This stack is heavily optimized for:
+---
 
-- Vanilla TypeScript/DOM manipulation.
-- Lightweight frameworks that work directly in the browser (like **Alpine.js** or **Petite Vue**).
-- Web Components.
-- Native server-rendered TSX.
+## 🚀 Frontend Frameworks
 
-If you want to use Alpine.js, it's as simple as:
+This stack is ideal for:
+1.  **Vanilla JS/TS** and DOM interactions.
+2.  **Lightweight libraries** that run directly in the browser, like **Alpine.js**:
 
 ```bash
 bun add alpinejs
 ```
-
 ```typescript
 // script/main.ts
 import Alpine from 'alpinejs';
 window.Alpine = Alpine;
 Alpine.start();
 ```
-
-_(Note: If you need a full React SPA, you should probably use Vite! This starter is about keeping the stack as light as possible.)_
+3.  **Web Components**.
+4.  **Server-Side TSX** templates.

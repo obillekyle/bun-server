@@ -1,99 +1,117 @@
 # 🛠️ Configuration Reference
 
-While the server strives for zero-configuration, sometimes you need to tweak the engine. Everything is controlled via the `server.config.ts` file in the root of your project.
+Tweak your development engine using the single configuration file: **[server.config.ts](server.config.ts)**.
 
-## 📝 The `server.config.ts` File
+---
 
-Here is an exhaustive list of everything you can configure:
+## 📝 Configuration Options
+
+Here is the complete configuration skeleton with all supported fields:
 
 ```typescript
 // server.config.ts
-import { defineConfig } from './.server/types'; // Assuming you exported the type
+import { defineConfig } from './.server/types';
 
 export default defineConfig({
-  // -------------------------
-  // Networking
-  // -------------------------
-  
-  // The port the server runs on. Defaults to 3000.
+  /**
+   * Server port.
+   * @default 3000
+   */
   port: 3000,
-  
-  // The host binding. Defaults to '0.0.0.0' (accessible on network).
-  // Use '127.0.0.1' or 'localhost' to restrict to local machine only.
+
+  /**
+   * Host binding. Use '127.0.0.1' to restrict to localhost.
+   * @default '0.0.0.0'
+   */
   host: '0.0.0.0',
 
-  // -------------------------
-  // Proxy Configuration
-  // -------------------------
-  
-  // Proxy requests to other servers to bypass CORS or aggregate APIs.
+  /**
+   * HTTP Proxy rules to bypass CORS.
+   */
   proxy: {
-    // When a request hits '/external/*', it will be forwarded to the target.
     '/weather-api': 'https://api.weather.gov',
-    '/internal-auth': 'http://localhost:8080/auth'
   },
 
-  // -------------------------
-  // Import Mapping (Frontend)
-  // -------------------------
-  
-  // Override or add to the auto-generated import maps for the browser.
+  /**
+   * Frontend path aliases mapped to client import maps.
+   */
   importMap: {
-    // Allows you to do `import { MyUtil } from 'utils/string'` in the frontend
-    'utils/': '/script/utils/',
-    
-    // You can also override a node_module if you want a specific build
-    'lodash': '/node_modules/lodash/lodash.min.js'
+    'helpers/': '/script/helpers/',
   },
 
-  // -------------------------
-  // Server Hooks (Advanced)
-  // -------------------------
-
   /**
-   * onRequest
-   * Intercept requests BEFORE the router or static file server touches them.
-   * Return a `Response` to short-circuit the request and answer immediately.
-   * Return `null` or `undefined` to let the server handle it normally.
+   * Scripts injected into all HTML pages.
    */
-  async onRequest(req, server) {
-    const url = new URL(req.url);
-    
-    // Example: Block all traffic trying to read a specific hidden folder
-    if (url.pathname.startsWith('/top-secret')) {
-      return new Response('Access Denied', { status: 403 });
-    }
-    
-    return null; 
-  },
+  scripts: [
+    '/script/analytics.js',
+    { src: '/script/app-module.js', module: true, inBody: true },
+  ],
 
   /**
-   * onError
-   * Catch global server errors. 
-   * Useful for logging to external services (like Sentry) or returning custom 500 pages.
+   * Stylesheets injected into all HTML headers (hot-swapped dynamically in dev!).
    */
-  async onError(error) {
-    console.error("Custom Error Logger:", error.message);
-    
-    // Return a custom JSON response instead of the default
-    return new Response(JSON.stringify({ 
-      error: "Something went terribly wrong!",
-      details: error.message 
-    }), { status: 500 });
-  },
+  styles: ['/styles/global.css'],
 
   /**
-   * onStart
-   * Runs exactly once when the server has successfully started and bound to the port.
+   * Sequential middleware array.
+   */
+  middleware: [
+    async (req, server) => {
+      console.log(`Request path: ${new URL(req.url).pathname}`);
+    },
+    async (req, server) => {
+      // Short-circuiting the request by returning a Response!
+      if (req.url.includes('/forbidden')) {
+        return new Response('Forbidden', { status: 403 });
+      }
+    },
+  ],
+
+  /**
+   * Callback executed once when server successfully starts.
    */
   async onStart(server) {
-    console.log(`Server is healthy and ready to accept connections!`);
-  }
+    console.log(`Server running on port ${server.port}`);
+  },
+
+  /**
+   * Catch requests that bypass other routers (final fallback).
+   */
+  async onRequest(req, server) {
+    if (new URL(req.url).pathname === '/healthz') {
+      return new Response('OK');
+    }
+    return null;
+  },
+
+  /**
+   * Catch global server errors for logging/custom handling.
+   */
+  async onError(error) {
+    console.error('Global Error:', error.message);
+    return new Response('Internal Server Error', { status: 500 });
+  },
 });
 ```
 
+---
+
+## 🔗 The Middleware Pipeline Chain
+
+The functions in the `middleware` array run sequentially for every request:
+
+```
+Request ──► Middleware 1 ──► Middleware 2 ──► Middleware 3 ──► API Routing / Static Files
+```
+
+- **Sequential Execution:** Middlewares run in the exact order they are declared in the array.
+- **Request Interception (Short-Circuiting):** If any middleware returns a `Response` object, execution halts immediately. The server skips all remaining middlewares, API routes, and static files, returning that `Response` directly to the client.
+- **Inspection Mode:** If a middleware returns `null`, `undefined`, or nothing (`void`), the request passes passively to the next middleware.
+
+---
+
 ## 🔄 Automatic `tsconfig.app.json` Syncing
 
-If you define path aliases in your `importMap` (e.g., `'utils/': '/script/utils/'`), the server will automatically detect this and synchronize your `tsconfig.app.json` paths!
+When you specify frontend path aliases in `importMap` (e.g., `'helpers/': '/script/helpers/'`), the server automatically parses them on startup and synchronizes your **[tsconfig.app.json](tsconfig.app.json)** path options.
 
-This means your IDE will immediately understand your custom aliases without you having to configure TypeScript manually. It's just another way the Bun Server keeps things frictionless.
+This ensures that your IDE understands absolute path imports instantly without any manual configuration.

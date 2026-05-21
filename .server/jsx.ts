@@ -1,6 +1,6 @@
 type Server = Bun.Server<any>;
 
-// 1. The Fragment Handler
+//  The Fragment Handler
 export const Fragment = ({ children }: { children?: any }) => {
   switch (true) {
     case Array.isArray(children):
@@ -12,7 +12,7 @@ export const Fragment = ({ children }: { children?: any }) => {
   }
 };
 
-// 2. The JSX-to-String Engine
+//  The JSX-to-String Engine
 export const createElement = (
   tag: any,
   props: Record<string, any> | null,
@@ -91,7 +91,7 @@ export const createElement = (
   }
 };
 
-// 3. The Endpoint Wrapper
+//  The Endpoint Wrapper
 type RenderFn = (
   req: Request,
   body: Record<string, any>,

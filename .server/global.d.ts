@@ -126,7 +126,7 @@ type AppConfig = {
    *  },
    * });
    */
-  onStart?: (server: Bun.Server<any>) => MixedPromise<void>;
+  onStart?(server: Bun.Server<any>): MixedPromise<void>;
   /**
    * Register a callback to handle incoming requests. This allows you to define
    * custom request handling logic, such as routing or middleware, directly in
@@ -145,7 +145,7 @@ type AppConfig = {
    *  },
    * });
    */
-  onRequest?: (req: Request, server: Bun.Server<any>) => MixedPromise<T>;
+  onRequest?(req: Request, server: Bun.Server<any>): MixedPromise<T>;
   /**
    * Register a callback to handle errors that occur during request processing.
    * This allows you to define custom error handling logic, such as logging or
@@ -161,7 +161,26 @@ type AppConfig = {
    *  },
    * });
    */
-  onError?: (error: Error) => MixedPromise<T>;
+  onError?(error: Error): MixedPromise<T>;
+  /**
+   * Register an array of middleware functions to execute sequentially
+   * before request routing. If a middleware returns a Response,
+   * processing stops and the response is returned immediately.
+   *
+   * @default []
+   * @example
+   * export default defineConfig({
+   *   middleware: [
+   *     async (req, server) => {
+   *       console.log('Request received:', req.url);
+   *     },
+   *   ],
+   * });
+   */
+  middleware?: ((
+    req: Request,
+    server: Bun.Server<any>,
+  ) => MixedPromise<Response | void>)[];
 };
 
 type Wrapped<T> = T | (() => T);

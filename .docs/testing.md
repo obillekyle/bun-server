@@ -1,6 +1,8 @@
 # 🧪 Testing Guide
 
-Bun ships with a ridiculously fast, built-in test runner (`bun test`). It's Jest-compatible, meaning you already know how to use it!
+Bun has a built-in Jest-compatible test runner: **`bun test`**.
+
+---
 
 ## 🏃 Running Tests
 
@@ -8,60 +10,62 @@ Bun ships with a ridiculously fast, built-in test runner (`bun test`). It's Jest
 # Run all tests in the project
 bun test
 
-# Run tests in watch mode
+# Run tests in hot watch mode
 bun test --watch
 ```
 
+---
+
 ## 🛠️ Testing API Routes
 
-Because our API routes use the `respond()` wrapper, they expect a `Request` object and return a `Response` object. Testing them is incredibly straightforward.
+Because route handlers use the `respond()` wrapper, you can test them by directly passing a mocked `Request` object.
 
-Create a test file next to your API route, e.g., `api/hello.test.ts`:
+Create `api/hello.test.ts`:
 
 ```typescript
 // api/hello.test.ts
-import { expect, test, describe } from "bun:test";
+import { expect, test, describe } from 'bun:test';
+import '../.server/init'; // Loads global respond and DB
+import helloRouteHandler from './hello';
 
-// 1. Initialize globals so `respond` and `DB` are available
-import "../.server/init";
+describe('GET /api/hello', () => {
+  test('returns greeting message', async () => {
+    const req = new Request('http://localhost:3000/api/hello?name=Alice');
+    const response = await helloRouteHandler(req, null as any, {} as any);
+    const json = await response.json();
 
-// 2. Import your endpoint
-import helloEndpoint from "./hello";
-
-describe("GET /api/hello", () => {
-  test("returns a friendly greeting", async () => {
-    // Mock a standard web Request
-    const req = new Request("http://localhost:3000/api/hello?name=Alice");
-    
-    // Call the endpoint directly
-    const response = await helloEndpoint(req, null as any, {} as any);
-    
-    // Parse the JSON response
-    const data = await response.json();
-    
     expect(response.status).toBe(200);
-    expect(data.message).toBe("Hello there, Alice!");
+    expect(json.message).toBe('Hello there, Alice!');
   });
 });
 ```
 
-## 🗄️ Testing with the Database
+---
 
-If your endpoints hit the database, you probably don't want your tests altering your local development database (`.database/server.db`).
+## 🗄️ Database Test Isolation (In-Memory)
 
-### Using an In-Memory Database for Tests
-
-You can override the global database connection specifically for your tests. In a global test setup file (or at the top of your test file):
+Avoid altering your local dev database during test runs by swapping it out for a temporary, isolated in-memory DB:
 
 ```typescript
-import { Database } from "bun:sqlite";
-import { connection } from "../.database/conn";
+// api/users.test.ts
+import { expect, test, describe, beforeAll } from 'bun:test';
+import { Database } from 'bun:sqlite';
+import '../.server/init';
+import { connection } from '../.database/conn';
+import { syncSQLSchema } from '../.database/sync';
 
-// Swap out the physical file DB for an in-memory one
-connection.db = new Database(":memory:");
+describe('Users Endpoints', () => {
+  beforeAll(async () => {
+    // 1. Swap connection to an in-memory SQLite DB
+    connection.db = new Database(':memory:');
+    // 2. Sync schema to build tables in the new in-memory instance
+    await syncSQLSchema();
+  });
 
-// You will need to run the sync logic or manually create tables
-// to ensure your in-memory DB has the right schema before tests run!
+  test('queries empty user table', async () => {
+    const users = await DB.table('users').selectAll('users');
+    expect(users.length).toBe(0);
+  });
+});
 ```
-
-*Note: Fully automating in-memory DB syncing for tests requires importing the `syncSQLSchema` function from `.database/sync.ts` and awaiting it before your test suites run.*
+This isolates your test runs, making them completely independent and blazing fast!

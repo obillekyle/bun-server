@@ -4,9 +4,12 @@
 .env
 
 # Ignore database files
-.database/server.db
 .database/schema.ts
 .database/.backups
+
+*.db
+*.sqlite
+*.sqlite3
 
 node_modules
 dist

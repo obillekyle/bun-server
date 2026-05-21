@@ -17,8 +17,11 @@ export function getSession<T = { [x: string]: any }>(
   const sessionId = cookieHeader.match(/(?:^|;\s*)sId=([^;]+)/)?.[1];
 
   if (!sessionId) throw new Error('No session cookie found');
-  if (sessionMap.has(sessionId))
-    return sessionMap.get(sessionId) as SessionProxy<T>;
+  if (sessionMap.has(sessionId)) {
+    const session = sessionMap.get(sessionId)!;
+    Object.assign(session, { created: Date.now() }); // Update last accessed time
+    return session as SessionProxy<T>;
+  }
 
   const newSession: SessionProxy<T> = new Proxy(
     {
@@ -87,15 +90,19 @@ export function setSession(path = '/'): Response {
   });
 }
 
-setTimeout(() => {
-  const now = Date.now();
+// Periodically clean up expired sessions
+setInterval(
+  () => {
+    const now = Date.now();
 
-  for (const session of sessionMap.values()) {
-    if (now - session.created > ttl) {
-      session.reset();
+    for (const session of sessionMap.values()) {
+      if (now - session.created > ttl) {
+        session.reset(true);
+      }
     }
-  }
-}, ttl);
+  },
+  1000 * 60 * 60,
+); // Check every hour
 
 export class Session<T = { [x: string]: string }> {
   private static storage = new Map<string, SessionProxy>();
@@ -132,3 +139,36 @@ export class Session<T = { [x: string]: string }> {
     this.proxy.reset(full);
   }
 }
+
+export function getAllSessions() {
+  const sessions: any[] = [];
+  for (const session of sessionMap.values()) {
+    const data: Record<string, any> = {};
+    for (const key of Object.keys(session)) {
+      if (['id', 'created', 'reset', 'persist'].includes(key)) continue;
+      data[key] = (session as any)[key];
+    }
+    sessions.push({
+      id: session.id,
+      createdAt: session.created,
+      expiresAt: session.created + ttl,
+      data,
+    });
+  }
+  return sessions;
+}
+
+export function deleteSession(id: string): boolean {
+  if (sessionMap.has(id)) {
+    const session = sessionMap.get(id)!;
+    session.reset(true);
+    return true;
+  }
+  return false;
+}
+
+export function getSessionById(id: string): SessionProxy | undefined {
+  return sessionMap.get(id);
+}
+
+

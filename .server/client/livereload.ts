@@ -1,23 +1,39 @@
 let needsReload = false;
 let isDead = false;
+const logQueue: string[] = [];
 
 function connect() {
   const ws = new WebSocket('ws://' + location.host + '/_livereload');
 
-  const sendLog = (level: string, args: any[]) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      const payload = Array.from(args)
-        .map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a)))
-        .join(' ');
-      ws.send(
-        JSON.stringify({
-          type: 'client_log',
-          level,
-          payload,
-          ip: '',
-        }),
-      );
+  const safeStringify = (val: any): string => {
+    try {
+      if (typeof val !== 'object' || val === null) return String(val);
+      const seen = new WeakSet();
+      return JSON.stringify(val, (key, value) => {
+        if (typeof value === 'object' && value !== null) {
+          if (seen.has(value)) return '[Circular]';
+          seen.add(value);
+        }
+        return value;
+      });
+    } catch {
+      return Object.prototype.toString.call(val);
     }
+  };
+
+  const sendLog = (level: string, args: any[]) => {
+    const payload = Array.from(args)
+      .map((a) => safeStringify(a))
+      .join(' ');
+
+    const msg = JSON.stringify({
+      type: 'client_log',
+      level,
+      payload,
+      ip: '',
+    });
+
+    ws.readyState === WebSocket.OPEN ? ws.send(msg) : logQueue.push(msg);
   };
 
   const ogLog = console.log,
@@ -95,6 +111,10 @@ function connect() {
   ws.onmessage = (e) => handleUpdate(e.data);
 
   ws.onopen = () => {
+    while (logQueue.length > 0) {
+      ws.send(logQueue.shift()!);
+    }
+
     switch (true) {
       case isDead:
         console.log('[LiveReload] Server is back! Refreshing...');

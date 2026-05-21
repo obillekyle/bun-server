@@ -1,4 +1,4 @@
-import './init';
+import '../init';
 
 const parentPid = parseInt(process.argv[2], 10);
 parentPid &&
@@ -29,6 +29,7 @@ try {
 } catch (e) {}
 
 let wsInstance: WebSocket | null = null;
+let wasConnected = false;
 
 console.clear();
 log({ level: 'debug', by: 'connect', msg: 'Waiting for backend...' });
@@ -42,6 +43,7 @@ function connect() {
     log({ by: 'websocket', msg: 'Connected! Listening for client logs...' });
     log({ by: 'logger', msg: 'Press "r" to reload all connected clients' });
     ws.send(JSON.stringify({ type: 'subscribe_logger' }));
+    wasConnected = true;
   };
 
   ws.onmessage = (e) => {
@@ -59,11 +61,14 @@ function connect() {
 
   ws.onclose = () => {
     wsInstance = null;
-    log({
-      level: 'warn',
-      by: 'connect',
-      msg: 'Hot-reload active. Backend rebooting...',
-    });
+    if (wasConnected) {
+      log({
+        level: 'warn',
+        by: 'connect',
+        msg: 'Hot-reload active. Backend rebooting...',
+      });
+      wasConnected = false;
+    }
     setTimeout(connect, 1000);
   };
 

@@ -1,13 +1,13 @@
 :root {
-  --bg-color: #0f172a;
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --card-bg: rgba(30, 41, 59, 0.7);
+  --bg-color: #000000;
+  --text-main: #ffffff;
+  --text-muted: #888888;
+  --card-bg: rgba(18, 18, 18, 0.75);
   --card-border: rgba(255, 255, 255, 0.1);
-  --primary-accent: #3b82f6;
-  --primary-hover: #2563eb;
-  --secondary-accent: #8b5cf6;
-  --secondary-hover: #7c3aed;
+  --primary-accent: #ffffff;
+  --primary-hover: #e5e5e5;
+  --secondary-accent: #cccccc;
+  --secondary-hover: #aaaaaa;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
@@ -29,8 +29,8 @@ body {
   align-items: center;
   padding: 2rem;
   background-image:
-    radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15), transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.15), transparent 25%);
+    radial-gradient(circle at 15% 50%, rgba(255, 255, 255, 0.03), transparent 25%),
+    radial-gradient(circle at 85% 30%, rgba(255, 255, 255, 0.02), transparent 25%);
 }
 
 .container {
@@ -52,10 +52,10 @@ body {
 }
 
 .logo-wrapper {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
   padding: 1rem;
   border-radius: 50%;
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.06);
   border: 1px solid var(--card-border);
   aspect-ratio: 1;
   display: grid;
@@ -72,7 +72,7 @@ body {
   font-size: 3.5rem;
   font-weight: 900;
   letter-spacing: -0.02em;
-  background: linear-gradient(135deg, #60a5fa, #a78bfa);
+  background: linear-gradient(135deg, #ffffff, #a0a0a0);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -157,7 +157,7 @@ code {
   font-weight: 900;
   color: var(--text-main);
   line-height: 1;
-  text-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
 }
 
 /* API Widget */
@@ -186,13 +186,13 @@ button, .primary-btn, .secondary-btn {
 
 .primary-btn {
   background-color: var(--primary-accent);
-  color: white;
-  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+  color: #000000;
+  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.15);
 }
 
 .primary-btn:hover {
   background-color: var(--primary-hover);
-  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 6px 20px rgba(255, 255, 255, 0.2);
 }
 
 .primary-btn:active {
@@ -201,13 +201,13 @@ button, .primary-btn, .secondary-btn {
 
 .secondary-btn {
   background-color: var(--secondary-accent);
-  color: white;
-  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+  color: #000000;
+  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.08);
 }
 
 .secondary-btn:hover {
   background-color: var(--secondary-hover);
-  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
+  box-shadow: 0 6px 20px rgba(255, 255, 255, 0.1);
 }
 
 .secondary-btn:active {
@@ -223,11 +223,11 @@ button, .primary-btn, .secondary-btn {
 }
 
 .terminal-header {
-  background: #1e293b;
+  background: #0a0a0a;
   padding: 0.5rem 0.75rem;
   display: flex;
   gap: 0.4rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .dot {
@@ -252,7 +252,7 @@ button, .primary-btn, .secondary-btn {
   padding: 1rem;
   font-family: var(--font-mono);
   font-size: 0.85rem;
-  color: #a78bfa;
+  color: #d1d5db;
   min-height: 80px;
   max-height: 150px;
   overflow-y: auto;

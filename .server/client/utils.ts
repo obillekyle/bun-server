@@ -39,14 +39,13 @@ match[Symbol.toPrimitive] = () => matchDefault;
 const tryCatch = async <T = any>(
   promise: Wrapped<Promise<T>>,
 ): Promise<[Error, null] | [null, T]> => {
-  const unwrapped = promise instanceof Function ? promise() : promise;
+  const unwrapped =
+    typeof promise === 'function' ? (promise as Function)() : promise;
+  let returned = Promise.resolve(unwrapped);
 
-  try {
-    const data = await unwrapped;
-    return [null, data as T];
-  } catch (error: any) {
-    return [error instanceof Error ? error : new Error(String(error)), null];
-  }
+  return returned
+    .then((data) => [null, data])
+    .catch((error) => [error, null]) as Promise<[any, T]>;
 };
 
 const assert = (condition: any, message?: string): asserts condition => {
@@ -82,7 +81,11 @@ function processGetBody(
 }
 
 function randomId(length = 8) {
-  return Math.random().toString(36).slice(2, length);
+  const arr = new Uint8Array(Math.ceil(length / 2));
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (dec) => dec.toString(16).padStart(2, '0'))
+    .join('')
+    .slice(0, length);
 }
 
 async function request(url: string, init?: RequestJson): Promise<JsonResponse> {
@@ -93,7 +96,7 @@ async function request(url: string, init?: RequestJson): Promise<JsonResponse> {
   switch (method) {
     case 'GET':
       const query = processGetBody(body);
-      const fullUrl = query ? `${url}?${query}` : url;
+      url = query ? `${url}?${query}` : url;
       initReq = { ...init, method, body: undefined };
       break;
 

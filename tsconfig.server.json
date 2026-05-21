@@ -2,25 +2,17 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "composite": true,
-
-    "types": ["bun-types"],
-    "paths": {
-      "@server/*": ["./.server/*"],
-      "@database/*": ["./.database/*"],
-      "@api/*": ["./api/*"]
-    }
+    "types": ["bun-types"]
   },
   "include": [
-    ".server/**/*.ts",
-    ".database/**/*.ts",
     "**/*.tsx",
-    "api/**/*.ts",
-    "server.config.ts",
-    ".server/serve.ts"
+    ".server/**/*.ts",
+    ".server/**/*.tsx",
+    ".database/**/*.ts",
+    ".dashboard/**/*.ts",
+    ".dashboard/**/*.tsx",
+    "server.config.ts"
   ],
-  "exclude": [
-    ".server/client.d.ts",
-    ".server/client-livereload.ts",
-    ".server/client-utils.ts"
-  ]
+  "exclude": [".server/client/**/*.ts"],
+  "files": [".dashboard/dashboard.tsx"]
 }

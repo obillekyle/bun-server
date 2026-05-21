@@ -5,17 +5,18 @@
     "module": "ESNext",
     "lib": ["ESNext", "DOM", "DOM.Iterable"]
   },
-  "include": ["*.ts", "**/*.ts", "jsx.tsx"],
+  "include": ["*.ts", "**/*.ts"],
   "exclude": [
     ".server/**/*.ts",
     ".database/**/*.ts",
+    ".dashboard/**/*.ts",
     "server.config.ts",
-    "api/**/*.ts",
-    "**/*.tsx"
+    "api/**/*.ts"
   ],
   "files": [
-    ".server/client.d.ts",
-    ".server/client-livereload.ts",
-    ".server/client-utils.ts"
+    ".server/client/globals.d.ts",
+    ".server/client/livereload.ts",
+    ".server/client/utils.ts",
+    ".dashboard/dashboard.ts"
   ]
 }

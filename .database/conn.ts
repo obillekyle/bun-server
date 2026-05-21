@@ -1,5 +1,8 @@
 import { Database } from 'bun:sqlite';
 
-export const connection = new Database(import.meta.dir + '/server.db', {
-  create: true,
-});
+const dbEnvPath = process.env.DB_PATH || import.meta.env.DB_PATH || '';
+
+let dbPath = process.cwd() + '/' + (dbEnvPath || '.database/server.db');
+dbPath = dbEnvPath === ':memory:' ? dbEnvPath : dbPath;
+
+export const connection = new Database(dbPath, { create: true });

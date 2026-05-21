@@ -1,80 +1,68 @@
 # ⚙️ Server & Dev Architecture
 
-If you just want to build features, you can ignore the `.server/` folder completely. But if you're curious about how we achieved this zero-config, blazing-fast developer experience, grab a coffee and read on.
+This guide covers the core background systems that power the Bun Server dev loop.
 
-The `bun-server` does a *lot* of heavy lifting behind the scenes to make your life easier.
+---
 
 ## 🏗️ 1. On-the-Fly TypeScript Compilation
 
-Normally, you have to run a build step (like Vite, Webpack, or tsc) to turn your frontend `.ts` files into `.js` so the browser can read them. Not here.
+The server transpiles and serves frontend TypeScript (`.ts`) as JavaScript (`.js`) dynamically on request:
 
-When a browser requests a `.js` file (e.g., `/script/main.js`), our server does a quick check:
-1. "Does `/script/main.ts` exist?"
-2. If yes, it dynamically intercepts the request.
-3. It passes the file to our lightning-fast `compiler.ts`.
-4. The TS is compiled to JS instantly and served to the browser.
+1.  When the browser requests `/script/main.js`, the server checks if `/script/main.ts` exists.
+2.  If found, the server transpiles it on the fly using Bun's native transpile API.
+3.  The transpiled JavaScript is cached in memory for near-instant subsequent loads.
+4.  Saving edits to the `.ts` file automatically busts the compiler cache.
 
-**The best part?** The compiled result is cached in memory. The first load is fast, and subsequent loads are near-instantaneous. If you edit the file, the cache is busted automatically!
+---
 
 ## 🌍 2. Global Utilities Injection
 
-To save you from typing hundreds of import statements, `.server/init.ts` forcefully assigns our most used utilities directly onto `globalThis`. 
+To reduce import statement noise, the server initializes core helpers directly onto the global scope (**`globalThis`**) on startup:
 
-Because of this, you can just use these everywhere without importing:
-- `respond` (API route wrapper)
-- `DB` (The typed ORM)
-- `log` / `Logger` (Terminal logging)
-- `match` (Pattern matching)
+- `DB`: Autocompleted, type-safe query builder database connection.
+- `respond`: Main API endpoint definition wrapper.
+- `log` / `Logger`: Standardized terminal log wrappers.
+- `match`: Functional pattern-matching engine.
 
-## 🎛️ 3. The Central `server.config.ts`
+The types for these are mapped in [`.server/global.d.ts`](.server/global.d.ts).
 
-While the core server is locked down in `.server/`, you control the behavior via the `server.config.ts` file in your root directory. This is where you configure ports, setup proxies, and define import maps.
+---
 
-```typescript
-// server.config.ts
-import { defineConfig } from './.server/types'; // (or wherever your types are)
+## 🎛️ 3. The Developer Console Dashboard (`.dashboard/`)
 
-export default defineConfig({
-  port: 3000,
-  
-  // Need to bypass CORS to talk to an external API? Use a proxy!
-  proxy: {
-    '/weather_api': 'https://api.weather.gov', 
-  },
-  
-  // Want custom path aliases for your frontend?
-  importMap: {
-    'components/': '/styles/components/'
-  }
-});
+A premium monochrome admin console runs at `http://localhost:3000/_dashboard` in development mode.
+
+- The console assets and routing logic live in the root **[`.dashboard/`](.dashboard)** folder.
+- It supports database browsing, CSV/JSON transfers, SQL console operations, session key-value manipulation, stats polling, and API testing.
+
+---
+
+## 📦 4. Dynamic Auto Import Maps
+
+Standard browsers cannot resolve bare NPM module imports natively. On startup, the server scans your `package.json` dependencies and injects a script block into the HTML page headers:
+
+```html
+<script type="importmap">
+  ...
+</script>
 ```
 
-## 📦 4. Auto Node Modules Mapping
+This maps bare imports (e.g. `canvas-confetti`) directly to `/node_modules/` files, letting you import NPM modules in the browser without a bundler.
 
-If you've ever tried to use standard ES imports in the browser with `node_modules`, you know it usually requires a bundler. 
+---
 
-We built a clever workaround: **Auto Import Mapping**.
-During startup, the server scans your `package.json`. It finds all your dependencies and dynamically generates an HTML `<script type="importmap">`. 
+## 🔄 5. Live Reloading & CSS Hot-Swaps
 
-If you install `lodash-es`, you can just `import { cloneDeep } from 'lodash-es'` in your frontend `.ts` files, and the server automatically maps it to the correct file in `/node_modules/`. It's pure magic.
+In development (`bun run dev`), the server automatically watches the file system and opens a WebSocket connection to the page at `/_livereload`.
 
-## 🔄 5. True Zero-Config Live Reloading
+- **Backend files saved:** The development server worker restarts in milliseconds.
+- **HTML/JS files saved:** The page reloads automatically.
+- **CSS files saved:** The stylesheet `<link>` is reloaded with a timestamp parameter, hot-swapping the styles in real-time **without reloading the page**.
 
-When you run `bun run dev`, the server enters Watcher Mode.
+---
 
-Any `.html` file served is aggressively intercepted, and a tiny, unobtrusive `<script>` tag is injected into it. This script opens a persistent WebSocket connection back to the server at `/_livereload`.
+## 💻 6. Client Logging Proxy
 
-Meanwhile, the server watches your file system:
-- **Change a `.ts` backend file?** The dev worker gracefully restarts.
-- **Change an `.html` or `.js`/`.ts` frontend file?** The WebSocket yells at the browser to do a clean `location.reload()`.
-- **Change a `.css` file?** The WebSocket tells the browser to dynamically hot-swap the stylesheet by appending a timestamp query parameter. **The page never even refreshes!**
+The live-reload script proxies client-side browser console outputs (`console.log`, `console.warn`, `console.error`) and forwards them over WebSockets back to the server. They are printed in color directly in your backend terminal.
 
-## 💻 6. The Client Logging Terminal
-
-Constantly switching between your editor and the Chrome DevTools console is annoying. So, we fixed it.
-
-The live-reload script we inject also **proxies your browser's console** (`console.log`, `console.warn`, `console.error`). 
-
-Whenever your frontend code logs something, it sends it over the WebSocket to the server, and the server prints it beautifully in your terminal. You can see your backend logs and frontend logs in one unified place!
-
-**Pro Developer Move:** Press the `d` key in your terminal while the dev server is running. It will spawn a completely separate, dedicated terminal window just for your client-side logs! 🤯
+**Pro Tip:** Press **`d`** in the terminal while running the dev server to spawn a dedicated terminal window that logs only browser console outputs.

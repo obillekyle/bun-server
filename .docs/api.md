@@ -1,68 +1,90 @@
 # ⚡️ File-Based API Routing
 
-Welcome to the easiest API routing you've ever experienced. Say goodbye to manual router binding like `app.get('/api/users', ...)` and hello to pure, file-system-based magic.
+Say goodbye to manual router bindings like `app.get('/api/users', ...)`. In the Bun Server, files inside the `api/` directory automatically map to `/api/<filename>` endpoints. Zero-config routing!
 
-In the Bun Server, the `api/` directory is sacred ground. Any `.ts` file you drop in there automatically maps to an `/api/<filename>` endpoint.
+---
 
-## 🎁 The `respond()` Wrapper
+## 🎁 The Global `respond()` Wrapper
 
-To make your life incredibly easy, we provide a globally available wrapper function called `respond()`. You don't even need to import it! It handles the annoying stuff:
+The globally injected `respond()` wrapper removes backend boilerplate. It automatically handles:
 
-- Catching the request.
-- Parsing the body (whether it's JSON, form data, or query parameters).
-- Handling errors gracefully so your server never crashes.
-- Formatting your return value into a proper HTTP Response.
+- Catching the HTTP request.
+- Parsing the request body (JSON, URL-encoded forms, query parameters).
+- Error handling to prevent server crashes.
+- Serializing return values into standard HTTP Responses.
 
-### Let's Build an Endpoint
+### Basic Endpoint Example
 
-Create a file at `api/hello.ts`:
+Create `api/hello.ts`:
 
 ```typescript
 // api/hello.ts
-
-// No imports needed! `respond` is just *there*.
+// `respond` is globally available—no imports needed!
 export default respond(async (req, body, server) => {
-  // `body` is automatically parsed based on the request type.
-
-  // Best Practice: Validate the HTTP method
   if (req.method !== 'GET') {
-    return {
-      status: 405,
-      message: 'Method Not Allowed',
-    };
+    return { status: 405, message: 'GET only please!' };
   }
 
-  const name = body.name || 'Mysterious Stranger';
-
-  // Just return a plain object! We handle the JSON serialization and status codes.
+  const name = body.name || 'Stranger';
   return {
     status: 200,
-    message: `Hello there, ${name}!`,
-    data: {
-      receivedMethod: req.method,
-      timestamp: Date.now(),
-    },
+    message: `Hello, ${name}!`,
   };
 });
 ```
 
-Boom. You can now hit `/api/hello?name=Bob` or `POST` JSON to it, and it just works!
+Hit `GET /api/hello?name=Bob` and watch the JSON print!
 
-## 🛠️ How it Works Under the Hood
+---
 
-Curious how this black magic operates?
+## 🌀 Dynamic File-Based Routing (`req.params`)
 
-1. **The Intercept:** When a request hits the server with a URL starting with `/api/`, our custom server intercepts it.
-2. **Dynamic Import:** It extracts the endpoint name (e.g., `hello` from `/api/hello`) and dynamically imports `api/hello.ts`.
-3. **Body Processing:** The `processBody(req)` utility securely reads the incoming request, parses JSON if applicable, or extracts URL search params for GET requests, handing you a pristine `body` object.
-4. **Execution:** The `export default respond(...)` block is executed.
-5. **Auto-Formatting:**
-   - If you return a plain object, we automatically wrap it in `Response.json()` and apply the `status` if you provided one.
-   - If you return a string or number, we wrap it in a standard text response.
-   - If you return a raw `Response` or `Blob`, we send it back as-is!
+For dynamic endpoints, use square brackets `[parameter]` in your directory or file names (e.g. `api/users/[id].ts`). The matched values are injected into **`req.params`**.
+
+Create `api/users/[id].ts`:
+
+```typescript
+// api/users/[id].ts
+export default respond(async (req, body, server) => {
+  const userId = req.params.id; // Extracted dynamically!
+
+  if (req.method !== 'GET') {
+    return { status: 405, message: 'GET requests only' };
+  }
+
+  const user = await DB.table('users').where('id', '=', userId).fetch();
+  if (!user) {
+    return { status: 404, message: 'User not found' };
+  }
+
+  return { status: 200, data: user };
+});
+```
+
+### Nesting Placeholders
+
+You can nest dynamic routes too, e.g. `api/blogs/[blogId]/comments/[commentId].ts` will populate:
+
+- `req.params.blogId`
+- `req.params.commentId`
+
+---
+
+## 🔍 Under the Hood Lifecycle
+
+1.  **Intercept:** Incoming requests starting with `/api/` are routed to the API engine.
+2.  **Match:** Direct file matches are checked first. If none exist, the routing tree searches for dynamic placeholders (e.g., `[id]`).
+3.  **Parse Body:** The server parses queries for `GET`/`DELETE` requests and JSON/form bodies for `POST`/`PUT`/`PATCH` requests into the `body` argument.
+4.  **Dynamic Import:** The server dynamically imports the API file. In development, caching is bypassed on file saves so changes are live instantly.
+5.  **Execution & Wrapping:** The handler executes:
+    - **Plain Object:** Serialized into `Response.json()` with status.
+    - **String/Number:** Wrapped in a plain text response.
+    - **Raw Response/Blob:** Returned as-is (useful for custom headers, files, redirects).
+
+---
 
 ## 💡 Pro Tips
 
-- **Raw Access:** You have full access to the raw Bun `Request` object (`req`) and the `Server` instance (`server`) inside the callback. Need to check headers? `req.headers.get('Authorization')`. Need to broadcast a WebSocket message? `server.publish(...)`.
-- **Custom Responses:** Want to return a file or custom HTML? Just return a `new Response("<h1>Custom!</h1>", { headers: { "Content-Type": "text/html" } })`. The `respond` wrapper is smart enough to let it pass through.
-- **Safety First:** The router is protected. Endpoint names must be valid alphanumeric/dash strings, preventing directory traversal attacks.
+- **Headers:** Access raw request headers via `req.headers.get('Authorization')`.
+- **WebSockets:** Broadcast socket messages using the server instance: `server.publish('channel', 'message')`.
+- **HTML Endpoints:** Return server-side compiled TSX templates by writing `.tsx` files and wrapping them with `html()`. Details in the [Frontend Guide](.docs/frontend.md).

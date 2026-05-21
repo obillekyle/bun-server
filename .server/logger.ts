@@ -19,6 +19,12 @@ const levelColors: Record<LogLevels | 'reset', string> = {
   reset: '\x1b[0m', // Reset
 };
 
+let onLogCallback: ((entry: LoggerEntry) => void) | null = null;
+
+export function setLogCallback(cb: (entry: LoggerEntry) => void) {
+  onLogCallback = cb;
+}
+
 export function log(
   { level = 'info', by = 'global', msg }: LoggerEntry,
   newLine = true,
@@ -33,6 +39,12 @@ export function log(
   console.write(
     `${color}${lvTag} ${byPad}${levelColors['reset']} ${msg}${newLine ? '\n' : ''}`,
   );
+
+  if (onLogCallback) {
+    try {
+      onLogCallback({ level, by, msg });
+    } catch {}
+  }
 }
 
 export function confirm(msg: string, by = 'global') {

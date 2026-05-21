@@ -1,72 +1,83 @@
-# 🚀 Bun Server: The Ultimate Dev-Friendly Stack
+# 🚀 Bun Server: The Zero-Config Full-Stack Stack
 
-Welcome to the **Bun Server**! This isn't just another boilerplate; it's a meticulously crafted, ridiculously fast, and intensely developer-friendly full-stack starter built on top of [Bun](https://bun.sh/).
+Welcome to the **Bun Server**! A ridiculously fast, developer-friendly full-stack starter built on [Bun](https://bun.sh/). We stripped out all config headaches, leaving you with pure coding bliss.
 
-We stripped out all the boring boilerplate, configuration headaches, and import soups, leaving you with pure, unadulterated coding bliss.
+---
 
-## ✨ What's the Vibe?
+## ✨ Features
 
-We believe in **Zero-Config Magic**. You shouldn't have to spend hours setting up Webpack, Babel, or complex database connection logic. With this starter, you get:
+- **🔥 Blazing Fast Dev Server:** Native speed with on-the-fly TypeScript compilation.
+- **🔄 Instant Live Reloading:** Server restarts on backend changes; browser refreshes on frontend changes; CSS hot-swaps in real-time _without_ a page reload.
+- **🗄️ Heavily Typed ORM:** Type-safe SQLite query builder. Your editor autocomplete will love it.
+- **📁 File-System Routing:** Drop `.ts` files in `api/` for instant endpoints.
+- **📦 Auto Node Modules Mapping:** Frontend imports from `node_modules` just work natively. No bundler required!
+- **🌐 Built-in Proxy:** Forward requests to bypass CORS or connect upstream via `server.config.ts`.
+- **🎛️ Dev Console Dashboard:** An admin panel at `/_dashboard` (located to the root [`.dashboard`](.dashboard) folder). Manage sessions, browse DB tables, run SQL commands, stream logs, and test APIs.
+- **💻 Client logging:** Stream browser logs directly to your backend terminal (Press **`d`** to open a dedicated client logger terminal).
 
-- **🔥 Blazing Fast Dev Server:** Powered by Bun, featuring on-the-fly TypeScript compilation.
-- **🔄 Instant Live Reloading:** No configuration needed. Change a CSS file? It hot-swaps. Change HTML/JS? It reloads.
-- **🗄️ Heavily Typed ORM:** A built-in, type-safe SQL query builder. Your editor will auto-complete everything.
-- **📁 File-System Routing:** Drop a `.ts` file in the `api/` folder, and boom, it's an endpoint.
-- **📦 Auto Node Modules Mapping:** Frontend imports from `node_modules` just work out of the box. No bundler required!
-- **🌐 Built-in Proxy:** Easily forward requests to other services via `server.config.ts`.
-- **💻 Client Logging Terminal:** See your browser's `console.log` directly in your terminal, or even spawn a dedicated terminal window just for client logs!
+---
 
 ## 🚀 Quick Start
 
-Get up and running in literal seconds. No joke.
+Get running in seconds:
 
 ```bash
-# 1. Install dependencies (it's Bun, so it takes 0.01 seconds)
+# 1. Install dependencies
 bun install
 
-# 2. Fire up the magical dev watcher
+# 2. Start the dev watcher
 bun run dev
 ```
 
-That's it. You're live! 🎉
+Your app is live at [http://localhost:3000](http://localhost:3000)! 🎉
+
+---
 
 ## 📂 Project Architecture
 
-Here's the lay of the land. It's clean, intuitive, and stays out of your way.
+- **`api/`** — Backend API. Any `.ts` file maps to an `/api/...` endpoint.
+- **`.dashboard/`** — Codebase for the Web Admin Console.
+- **`.database/`** — SQLite database (`server.db`), schema (`schema.ts`), and connection logic.
+- **`.server/`** — Core server engine (live-reload, TS compilers, routing). You rarely need to touch this.
+- **`styles/` & `script/`** — Static stylesheets and client-side TS scripts (compiled on the fly!).
+- **`index.html`** — Frontend entry point.
+- **`server.config.ts`** — Single configuration file for ports, proxies, and middleware.
 
-- **`api/`** — Your backend playground. Any `.ts` file here automatically becomes an accessible `/api/...` endpoint.
-- **`.server/`** — The brain of the operation. Contains the custom dev server, TypeScript compiler, WebSocket live-reloader, and proxy logic. You rarely need to touch this unless you're hacking the core!
-- **`.database/`** — Your type-safe SQL ORM lives here. Define your schema in `schema.ts`, and the sync engine handles the rest.
-- **`styles/` & `script/`** — Drop your frontend CSS and TS files here. They are served statically and compiled on the fly.
-- **`index.html`** — Your main entry point for the frontend.
-- **`server.config.ts`** — The one and only configuration file you need for setting ports, proxies, and custom import maps.
+---
 
 ## 🪄 Global Superpowers
 
-To keep your code ridiculously clean, we inject a few highly useful utilities directly into the global scope. No more `import { ... } from '../../../../utils'`!
+These helper utilities are injected directly into the global scope—no import statements needed:
 
-- `DB`: Your gateway to the fully typed ORM.
-- `respond`: The wrapper you use to define awesome API endpoints.
-- `log` & `Logger`: Beautiful, standardized terminal logging.
-- `match`: A powerful, functional pattern-matching utility.
+- `DB`: Your query-builder ORM gateway.
+- `respond`: The API route wrapper (handles body parsing, error catches, and JSON formatting).
+- `log` & `Logger`: Standardized color terminal logs.
+- `match`: A clean pattern-matching utility.
 
-## 📚 Deep Dive Documentation
+---
 
-Ready to become a Bun Server master? Check out our casual, rich guides to learn all the secrets:
+## 📚 Documentation Guides
 
-- 🛣️ **[API & File-System Routing](.docs/api.md)**: Learn how to build endpoints without writing routing logic.
-- 🗄️ **[The Built-in Typed ORM](.docs/orm.md)**: Master the query builder and never write a bad SQL query again.
-- ⚙️ **[Server & Dev Tools Architecture](.docs/server.md)**: Peek under the hood and see how the magic live-reloading and compilation actually work.
-- 🚀 **[Deployment & Production](.docs/deployment.md)**: How to run the server in production, use PM2, Docker, and Nginx.
-- 🎨 **[Frontend & Asset Management](.docs/frontend.md)**: Learn about the TS compilation, CSS hot-swapping, and using Node modules in the browser.
-- 🛠️ **[Configuration Reference](.docs/configuration.md)**: A complete guide to tweaking `server.config.ts`.
-- 🗃️ **[Database Migrations & Syncing](.docs/migrations.md)**: Best practices for managing your SQLite schema over time.
-- 🧪 **[Testing Guide](.docs/testing.md)**: How to write blazing fast tests for your API endpoints using `bun test`.
+Ready to dive deeper? Check out our guides:
 
-## 📜 Available Scripts
+- 🛣️ **[API & File-System Routing](.docs/api.md)**: Endpoints, request bodies, and dynamic paths.
+- 🗄️ **[The Built-in Typed ORM](.docs/orm.md)**: Master the query builder and thenables.
+- 🎛️ **[Developer Console Dashboard](.docs/dashboard.md)**: Full guide to the admin cockpit.
+- ⚙️ **[Server & Dev Tools Architecture](.docs/server.md)**: Under the hood (compilers, loaders, reloaders).
+- 🛠️ **[Configuration Reference](.docs/configuration.md)**: Guide to tweaking `server.config.ts`.
+- 🗃️ **[Database Migrations & Syncing](.docs/migrations.md)**: Smart schema syncing and seeding.
+- 🧪 **[Testing Guide](.docs/testing.md)**: Run fast tests with `bun test`.
+- 🎨 **[Frontend & Asset Management](.docs/frontend.md)**: ES Modules, hot-reload, and server-side TSX.
+- 🚀 **[Deployment & Production](.docs/deployment.md)**: Docker, Nginx, PM2, and environment variables.
 
-- `bun run dev` - Starts the development server with the amazing file watcher and live-reload engine.
-- `bun run serve` - Runs the lean, production-ready server (no watchers, max performance).
-- `bun run db:sync` - Synchronizes your SQLite database with your TypeScript schema definitions. Run this whenever you change `schema.ts`.
+---
+
+## 📜 Scripts
+
+- `bun run dev` - Run development server with watchers and logs.
+- `bun run serve` - Run high-performance production server.
+- `bun run db:sync` - Sync SQLite DB with your TypeScript schema.
+
+Happy coding! 🚀
 
 _docs generated with Gemini (i'm very lazy to document manually lol)_

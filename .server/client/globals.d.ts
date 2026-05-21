@@ -1,10 +1,10 @@
 declare global {
   const matchDefault: unique symbol;
-  var match: import('./types').Match<typeof matchDefault>;
+  var match: import('../types').Match<typeof matchDefault>;
   var assert: (condition: any, message?: string) => asserts condition;
   var any: <T = any>(v: any) => T;
-  var repeat: typeof import('./utils').repeat;
-  var tryCatch: typeof import('./utils').tryCatch;
+  var repeat: typeof import('../utils').repeat;
+  var tryCatch: typeof import('../utils').tryCatch;
   var randomId: (length?: number) => string;
 
   var request: <T = any>(

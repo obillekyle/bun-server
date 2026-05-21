@@ -1,5 +1,5 @@
 import { connection } from './conn';
-import { toSnakeCase } from '../.server/strings';
+import { toSnakeCase } from '../.server/utils/strings';
 import type { DBSchema, DBOptionals, DBInfo } from './schema';
 
 export namespace Mutation {

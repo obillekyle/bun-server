@@ -1,9 +1,21 @@
 import type { DBSchema } from './schema';
-import { toSnakeCase } from '@server/strings';
+import { toSnakeCase } from '@server/utils/strings';
 import { Mutation } from './mutation';
 import { connection } from './conn';
 
 export namespace DB {
+  export function safeColumn(col: string): string {
+    const parts = col.split('.');
+    return parts
+      .map((part) => {
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(part)) {
+          throw new Error(`Invalid or unsafe column/table name: ${part}`);
+        }
+        return `\`${toSnakeCase(part)}\``;
+      })
+      .join('.');
+  }
+
   export type Tables = keyof DBSchema | (string & {});
 
   export type TableSchemas = DBSchema & {
@@ -811,8 +823,9 @@ export namespace DB {
     ): QBOrderBy<S, J, F, P> {
       const orderStr =
         typeof column === 'object'
-          ? `\`${Object.keys(column)[0]}\`.\`${Object.values(column)[0]}\``
-          : `\`${String(column)}\``;
+          ? // @ts-expect-error
+            `${safeColumn(Object.keys(column)[0]!)}.${safeColumn(Object.values(column)[0]!)}`
+          : safeColumn(String(column));
       return new (QBOrderBy as any)(this, `${orderStr} ${direction}`);
     }
     ORDER_BY(
@@ -893,8 +906,9 @@ export namespace DB {
     ): QBOrderBy<S, J, F, P> {
       const orderStr =
         typeof column === 'object'
-          ? `\`${Object.keys(column)[0]}\`.\`${Object.values(column)[0]}\``
-          : `\`${String(column)}\``;
+          ? // @ts-expect-error
+            `${safeColumn(Object.keys(column)[0]!)}.${safeColumn(Object.values(column)[0]!)}`
+          : safeColumn(String(column));
       return new (QBOrderBy as any)(this, `${orderStr} ${direction}`);
     }
     ORDER_BY(
@@ -976,8 +990,9 @@ export namespace DB {
     ): QBOrderBy<S, J, F, P> {
       const orderStr =
         typeof column === 'object'
-          ? `\`${Object.keys(column)[0]}\`.\`${Object.values(column)[0]}\``
-          : `\`${String(column)}\``;
+          ? // @ts-expect-error
+            `${safeColumn(Object.keys(column)[0]!)}.${safeColumn(Object.values(column)[0]!)}`
+          : safeColumn(String(column));
       return new (QBOrderBy as any)(this, `${orderStr} ${direction}`);
     }
     ORDER_BY(
