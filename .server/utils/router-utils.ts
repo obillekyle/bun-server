@@ -107,7 +107,7 @@ export async function resolveFileRoute(path: string, isNodeModule: boolean) {
   }
 
   if (stat?.isDirectory()) {
-    for (const ext of ['/index.tsx', '/index.html']) {
+    for (const ext of ['/index.tsx', '/index.html', '/index.ts', '/index.js']) {
       const checkPath = targetPath + ext;
       if (await Bun.file(checkPath).exists()) {
         targetPath = checkPath;
