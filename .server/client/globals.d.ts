@@ -1,37 +1,71 @@
 declare global {
-  const matchDefault: unique symbol;
-  var match: import('../types').Match<typeof matchDefault>;
-  var assert: (condition: any, message?: string) => asserts condition;
-  var any: <T = any>(v: any) => T;
-  var repeat: typeof import('../utils').repeat;
-  var tryCatch: typeof import('../utils').tryCatch;
-  var randomId: (length?: number) => string;
+  const matchDefault: unique symbol
+  var match: import('../types').Match<typeof matchDefault>
+  var is: import('../global.d.ts').ISFunction
+  type TryThrow = {
+    <T>(callback: () => T, error?: string | Error): T
+    <T>(callback: () => Promise<T>, error?: string | Error): Promise<T>
+  }
+  var Try: {
+    <T>(value: Wrapped<T>): T | null
+    catch: typeof tryCatch
+    return: <T, D>(
+      value: Wrapped<T>,
+      defaultValue: Wrapped<D, [Error]>,
+    ) => T | D
+    throw: TryThrow
+    silent: <T>(value: Wrapped<T>) => T | null
+  }
+  var Case: {
+    kebab: (str: string) => string
+    camel: (str: string) => string
+    pascal: (str: string) => string
+    snake: (str: string) => string
+    upper: (str: string) => string
+    lower: (str: string) => string
+    caps: (str: string) => string
+  }
+  var Math2: {
+    clamp: (value: number, min?: number, max?: number) => number
+    step: (value: number, step: number) => number
+  }
+  var throws: (message: string | Error) => never
+  var assert: (condition: any, message?: string) => asserts condition
+  var any: <T = any>(v: any) => T
+  var repeat: {
+    (n: number): number[]
+    <T>(n: number, fn: (i: number) => T): T[]
+  }
+  var tryCatch: <T = any>(
+    promise: Wrapped<Promise<T> | T>,
+  ) => Promise<[Error, null] | [null, T]> | ([Error, null] | [null, T])
+
+  var Bakery: {
+    version: string
+    virtual(path: string): Promise<any>
+    params<T = MapOf<any>>(): T
+  }
 
   var request: <T = any>(
     url: string,
-    init?: RequestJson,
-  ) => Promise<JsonResponse<T>>;
+    method?: string,
+    body?: any,
+  ) => Promise<JsonResponse<T>>
+  var randomId: () => string
 
-  type RequestJson = RequestInit & {
-    body: Record<string, any>;
-  };
-
-  type JsonResponse<T = any> = {
-    /** Respose time in milliseconds */
-    time: number;
-    /** The http status code */
-    status: number;
-    /** The success or error message of the request returned by the server */
-    message: string;
-    /** Data of the request, check the status first for error before accessing */
-    data: T;
-  };
-
-  type Wrapped<T = any> = T | (() => T);
-  type Constructor<T = any> = new (...args: any[]) => T;
-  type Constructable<T = any> = Constructor<T>;
-  type Callable<T = any> = (...args: any[]) => T;
-  type Hybrid<T = any> = Constructor<T> & Callable<T>;
+  interface ImportMeta {
+    env: {
+      BAKERY_VERSION: string
+      WORKER: boolean
+      DEV: boolean
+      PROD: boolean
+      [key: string]: any
+    }
+  }
 }
 
-export {};
+export {}
+
+declare module '@client/utils' {
+  export * from '../utils'
+}

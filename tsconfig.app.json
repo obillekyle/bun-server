@@ -3,20 +3,36 @@
   "compilerOptions": {
     "composite": true,
     "module": "ESNext",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "paths": {
+      "@client/utils": [
+        "./.server/client/utils"
+      ]
+    }
   },
-  "include": ["*.ts", "**/*.ts"],
+  "include": [
+    "src/**/*.ts",
+    ".server/client/**/*.ts",
+    ".server/plugins/**/client/**/*.ts"
+  ],
   "exclude": [
     ".server/**/*.ts",
-    ".database/**/*.ts",
-    ".dashboard/**/*.ts",
+    ".server/database/**/*.ts",
     "server.config.ts",
-    "api/**/*.ts"
+    "schema.ts",
+    "api/**/*.ts",
+    "**/*.tsx",
+    "scratch/**/*.ts",
+    "scanner/**/*.ts",
+    "node_modules"
   ],
   "files": [
     ".server/client/globals.d.ts",
     ".server/client/livereload.ts",
-    ".server/client/utils.ts",
-    ".dashboard/dashboard.ts"
+    ".server/client/utils.ts"
   ]
 }

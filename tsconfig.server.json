@@ -8,11 +8,13 @@
     "**/*.tsx",
     ".server/**/*.ts",
     ".server/**/*.tsx",
-    ".database/**/*.ts",
-    ".dashboard/**/*.ts",
-    ".dashboard/**/*.tsx",
-    "server.config.ts"
+    ".server/database/**/*.ts",
+    ".server/plugins/**/*.ts",
+    ".server/plugins/**/*.tsx",
+    "api/**/*.ts",
+    "server.config.ts",
+    "schema.ts",
+    "package.json"
   ],
-  "exclude": [".server/client/**/*.ts"],
-  "files": [".dashboard/dashboard.tsx"]
+  "files": [".server/client/log.ts"]
 }

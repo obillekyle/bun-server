@@ -16,6 +16,25 @@
         "panel": "shared",
         "clear": true
       }
+    },
+    {
+      "label": "bun-tsc-watch",
+      "type": "shell",      
+      "command": "bun --bun tsc --noEmit -w --project tsconfig.server.json",
+      "isBackground": true,
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "owner": "typescript",
+        "background": {
+          "activeOnStart": true
+        }
+      },
+      "presentation": {
+        "reveal": "never",
+        "panel": "shared",
+        "focus": false,
+        "close": false
+      }
     }
   ]
 }

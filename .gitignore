@@ -4,12 +4,19 @@
 .env
 
 # Ignore database files
-.database/schema.ts
-.database/.backups
+schema.ts
+.server/database/.backups
 
 *.db
 *.sqlite
 *.sqlite3
+*.db-*
+
+cookies.txt
 
 node_modules
 dist
+scratch
+.cache
+
+*.tsbuildinfo

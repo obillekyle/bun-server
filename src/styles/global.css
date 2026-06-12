@@ -1,0 +1,12 @@
+@view-transition {
+  navigation: auto;
+}
+
+body {
+  color-scheme: dark;
+}
+
+html {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  scrollbar-width: thin;
+}

@@ -1,0 +1,465 @@
+import { Case, Try } from '@server/utils'
+import { SQL } from 'bun'
+import type * as SyncTypes from '../sync/types'
+import {
+  type BackupResult,
+  DBAdapter,
+  type DBExecutor,
+  quoteIdentifier,
+  type RunResult,
+  type TableDataResult,
+  type TableDetails,
+} from './base'
+
+export class PGAdapter extends DBAdapter {
+  protected readonly sql: SQL
+  override readonly quoteChar: string = '"'
+
+  constructor(connectionTarget?: string | URL | SQL) {
+    const target =
+      typeof connectionTarget === 'string' || connectionTarget instanceof URL
+        ? connectionTarget.toString()
+        : undefined
+    super('postgres', undefined, target)
+    this.sql =
+      connectionTarget instanceof SQL
+        ? connectionTarget
+        : target
+          ? new SQL(target)
+          : new SQL()
+  }
+
+  private static handleQuote(
+    char: string,
+    nextChar: string | undefined,
+    state: any,
+  ): string | null {
+    if (char === "'") {
+      if (state.inSingleQuote && nextChar === "'") {
+        state.skipNext = true
+        return "''"
+      }
+      state.inSingleQuote = !state.inSingleQuote && !state.inDoubleQuote
+      return char
+    }
+    if (char === '"') {
+      state.inDoubleQuote = !state.inDoubleQuote && !state.inSingleQuote
+      return char
+    }
+    return null
+  }
+
+  private static handleSpecial(
+    char: string,
+    nextChar: string | undefined,
+    state: any,
+  ): string | null {
+    if (char === '\\') {
+      if ((state.inSingleQuote || state.inDoubleQuote) && nextChar) {
+        state.skipNext = true
+        return `\\${nextChar}`
+      }
+      return char
+    }
+    if (char === '`') {
+      return !state.inSingleQuote && !state.inDoubleQuote ? '"' : char
+    }
+    if (char === '?') {
+      return !state.inSingleQuote &&
+        !state.inDoubleQuote &&
+        state.paramsLength > 0
+        ? `$${++state.paramIndex}`
+        : char
+    }
+    return null
+  }
+
+  private static normalizePostgresSQL(sql: string, params: unknown[]) {
+    let result = ''
+    const state = {
+      inSingleQuote: false,
+      inDoubleQuote: false,
+      paramIndex: 0,
+      skipNext: false,
+      paramsLength: params.length,
+    }
+    for (let i = 0; i < sql.length; i++) {
+      if (state.skipNext) {
+        state.skipNext = false
+        continue
+      }
+      const char = sql[i]
+      const nextChar = sql[i + 1]
+      const quoteRes = PGAdapter.handleQuote(char, nextChar, state)
+      if (quoteRes !== null) {
+        result += quoteRes
+        if (state.skipNext) i++
+        continue
+      }
+      const specialRes = PGAdapter.handleSpecial(char, nextChar, state)
+      if (specialRes !== null) {
+        result += specialRes
+        if (state.skipNext) i++
+        continue
+      }
+      result += char
+    }
+    return result
+  }
+
+  readonly execute: DBExecutor = {
+    all: async (sqlText: string, params: unknown[] = []) =>
+      (await this.sql.unsafe(
+        PGAdapter.normalizePostgresSQL(sqlText, params),
+        params,
+      )) as any,
+    run: async (
+      sqlText: string,
+      params: unknown[] = [],
+    ): Promise<RunResult> => {
+      let sql = sqlText
+      const isInsert = /^\s*insert\s+into\s+/i.test(sql)
+      if (isInsert && !/\breturning\b/i.test(sql)) sql += ' RETURNING *'
+
+      const rows = (await this.sql.unsafe(
+        PGAdapter.normalizePostgresSQL(sql, params),
+        params,
+      )) as any
+      const changes = Number(
+        !Array.isArray(rows)
+          ? (rows?.count ?? rows?.affectedRows ?? 0)
+          : rows.length,
+      )
+      let lastInsertRowid = null
+
+      if (isInsert && Array.isArray(rows) && rows.length > 0) {
+        const firstRow = rows[0]
+        if (firstRow)
+          lastInsertRowid =
+            firstRow.id ??
+            firstRow.id_user ??
+            Object.values(firstRow)[0] ??
+            null
+      }
+      return { lastInsertRowid, changes }
+    },
+    iterate: (sqlText: string, params: unknown[] = []) =>
+      this.sql.unsafe(
+        PGAdapter.normalizePostgresSQL(sqlText, params),
+        params,
+      ) as any,
+    get: async (sqlText: string, params: unknown[] = []) =>
+      (await this.execute.all(sqlText, params))[0],
+    values: async (sqlText: string, params: unknown[] = []) =>
+      (await this.execute.all(sqlText, params)).map(Object.values),
+  }
+
+  async hasCol(table: string, column: string): Promise<boolean> {
+    const res = await this.query(
+      `SELECT 1 FROM information_schema.columns WHERE table_name = ? AND column_name = ? AND table_schema = current_schema()`,
+    ).all(table, column)
+    return res.length > 0
+  }
+
+  colDef(def: unknown): string {
+    const d = def as any
+    let typeStr =
+      {
+        integer: 'INTEGER',
+        string: 'TEXT',
+        number: 'DOUBLE PRECISION',
+        boolean: 'BOOLEAN',
+        buffer: 'BYTEA',
+      }[d.type as string] || 'TEXT'
+    if (d.autoIncrement && d.type === 'integer')
+      typeStr = 'INTEGER GENERATED BY DEFAULT AS IDENTITY'
+
+    let sql = `${typeStr}`
+    if (d.primary) sql += ' PRIMARY KEY'
+    if (!d.nullable && !d.primary) sql += ' NOT NULL'
+    return sql + this.formatDefault(d.default, 'TRUE', 'FALSE')
+  }
+
+  async addCol(table: string, column: string, def: unknown): Promise<void> {
+    await this.query(
+      `ALTER TABLE ${quoteIdentifier(table, this.quoteChar)} ADD COLUMN ${quoteIdentifier(column, this.quoteChar)} ${this.colDef(def)}`,
+    ).run()
+  }
+
+  async backup(keepCount = 10): Promise<BackupResult | null> {
+    if (!this.url) return null
+    const base = Try.return(
+      () => new URL(this.url!).pathname.replace(/^\//, ''),
+      'postgres',
+    )
+
+    const parsed = new URL(this.url!)
+    const safeUrl = new URL(this.url!)
+    safeUrl.password = ''
+    const envOverride = parsed.password
+      ? { PGPASSWORD: decodeURIComponent(parsed.password) }
+      : undefined
+
+    return await this.spawnBackup(
+      'pg_dump',
+      fullPath => [
+        'pg_dump',
+        '--dbname',
+        safeUrl.toString(),
+        '--no-owner',
+        '--no-privileges',
+        '--file',
+        fullPath,
+      ],
+      '.sql',
+      keepCount,
+      base,
+      envOverride,
+    )
+  }
+
+  async transaction<T>(
+    callback: (tx: DBAdapter) => T | Promise<T>,
+  ): Promise<T> {
+    return await this.sql.transaction(async txSql =>
+      callback(new PGAdapter(txSql)),
+    )
+  }
+
+  async getSchema(): Promise<TableDetails[]> {
+    const res = (await this.query(
+      "SELECT table_name AS name, table_type AS type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY table_name",
+    ).all()) as any[]
+    const tablesWithDetails: TableDetails[] = []
+
+    for (const t of res) {
+      const countRes = (await this.query(
+        `SELECT COUNT(*)::int as count FROM ${quoteIdentifier(t.name, this.quoteChar)}`,
+      ).get()) as { count: number }
+      const cols = (await this.query(
+        `SELECT column_name AS name, data_type AS type, is_nullable AS is_nullable FROM information_schema.columns WHERE table_name = ? AND table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY ordinal_position`,
+      ).all(t.name)) as any[]
+      const pkCols = (await this.query(
+        `SELECT a.attname AS name FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) WHERE i.indisprimary AND i.indrelid = ${quoteIdentifier(t.name, this.quoteChar)}::regclass`,
+      ).all()) as any[]
+      const idxs = (await this.query(
+        `SELECT indexname AS name, indexdef AS def FROM pg_indexes WHERE schemaname NOT IN ('pg_catalog', 'information_schema') AND tablename = ?`,
+      ).all(t.name)) as any[]
+      tablesWithDetails.push({
+        name: t.name,
+        rowCount: countRes?.count || 0,
+        columns: cols.map(c => ({
+          name: c.name,
+          type: c.type,
+          notnull: c.is_nullable === 'NO',
+          pk: pkCols.some(pk => pk.name === c.name),
+        })),
+        indexes: idxs.map(i => ({
+          name: i.name,
+          unique: /UNIQUE/i.test(i.def),
+        })),
+      })
+    }
+    return tablesWithDetails
+  }
+
+  async getData(
+    tableName: string,
+    options: {
+      page: number
+      pageSize: number
+      sortBy?: string | null
+      sortOrder?: string | null
+      filters?: Record<string, unknown>
+    },
+  ): Promise<TableDataResult> {
+    const cols = (await this.query(
+      `SELECT column_name AS name FROM information_schema.columns WHERE table_name = ? AND table_schema NOT IN ('pg_catalog', 'information_schema')`,
+    ).all(tableName)) as { name: string }[]
+    const { whereSql, orderSql, whereParams } = this.buildFilterSort(
+      options,
+      new Set(cols.map(c => c.name)),
+    )
+    const countRes = (await this.query(
+      `SELECT COUNT(*) as count FROM ${quoteIdentifier(tableName, this.quoteChar)}${whereSql}`,
+    ).get(...whereParams)) as { count: number }
+    const totalRows = countRes?.count || 0
+    const rows = (await this.query(
+      `SELECT ctid::text AS rowid, * FROM ${quoteIdentifier(tableName, this.quoteChar)}${whereSql}${orderSql} LIMIT ? OFFSET ?`,
+    ).all(
+      ...whereParams,
+      options.pageSize,
+      (options.page - 1) * options.pageSize,
+    )) as any[]
+    return {
+      rows,
+      totalRows,
+      page: options.page,
+      pageSize: options.pageSize,
+      totalPages: Math.ceil(totalRows / options.pageSize),
+    }
+  }
+
+  async remove(tableName: string, rowid: unknown): Promise<RunResult> {
+    return await this.query(
+      `DELETE FROM ${quoteIdentifier(tableName, this.quoteChar)} WHERE ctid::text = ?`,
+    ).run(rowid)
+  }
+  async truncate(tableName: string): Promise<RunResult> {
+    return await this.query(
+      `TRUNCATE TABLE ${quoteIdentifier(tableName, this.quoteChar)} RESTART IDENTITY CASCADE`,
+    ).run()
+  }
+  async insert(
+    tableName: string,
+    row: Record<string, unknown>,
+  ): Promise<RunResult> {
+    const keys = Object.keys(row),
+      values = Object.values(row)
+    return await this.query(
+      `INSERT INTO ${quoteIdentifier(tableName, this.quoteChar)} (${keys.map(k => quoteIdentifier(k, this.quoteChar)).join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`,
+    ).run(...values)
+  }
+  async update(
+    tableName: string,
+    rowid: unknown,
+    row: Record<string, unknown>,
+  ): Promise<RunResult> {
+    const keys = Object.keys(row).filter(k => k !== 'rowid')
+    return await this.query(
+      `UPDATE ${quoteIdentifier(tableName, this.quoteChar)} SET ${keys.map(k => `${quoteIdentifier(k, this.quoteChar)} = ?`).join(', ')} WHERE ctid::text = ?`,
+    ).run(...keys.map(k => row[k]), rowid)
+  }
+
+  async getConstraints(): Promise<SyncTypes.DBConstraints> {
+    const tables = (await this.query(
+      "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = current_schema() AND table_type IN ('BASE TABLE','VIEW')",
+    ).all()) as any[]
+    const pkRows = (await this.query(
+      "SELECT tc.table_name, kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.constraint_schema = kcu.constraint_schema WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.constraint_schema = current_schema()",
+    ).all()) as any[]
+    const pkMap = pkRows.reduce(
+      (acc, r) => {
+        if (!acc[r.table_name]) {
+          acc[r.table_name] = new Set()
+        }
+        acc[r.table_name].add(r.column_name)
+        return acc
+      },
+      {} as Record<string, Set<string>>,
+    )
+    const dbConstraints: SyncTypes.DBConstraints = {}
+
+    for (const t of tables) {
+      const tName = Case.camel(t.table_name)
+      dbConstraints[tName] = {} as SyncTypes.TableConstraints
+
+      if (t.table_type === 'VIEW') {
+        const viewDef = (await this.query(
+          'SELECT view_definition FROM information_schema.views WHERE table_schema = current_schema() AND table_name = ?',
+        ).get(t.table_name)) as any
+        if (viewDef?.view_definition)
+          dbConstraints[tName]._view = viewDef.view_definition
+      }
+
+      const cols = (await this.query(
+        'SELECT column_name, data_type, is_nullable, column_default, udt_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ? ORDER BY ordinal_position',
+      ).all(t.table_name)) as any[]
+
+      for (const col of cols) {
+        const primary = pkMap[t.table_name]?.has(col.column_name) || false
+        dbConstraints[tName][Case.camel(col.column_name)] =
+          parsePGColumnConstraint(col, primary)
+      }
+    }
+    return dbConstraints
+  }
+
+  async getIndexes(): Promise<SyncTypes.DBIndexes> {
+    const rows = (await this.query(
+      'SELECT indexname, indexdef, tablename FROM pg_indexes WHERE schemaname = current_schema()',
+    ).all()) as any[]
+    const dbIndexes: SyncTypes.DBIndexes = {}
+    for (const r of rows) {
+      if (
+        !r.indexname ||
+        r.indexname.endsWith('_pkey') ||
+        /PRIMARY KEY/i.test(r.indexdef)
+      )
+        continue
+      const m = r.indexdef.match(/\(([^)]+)\)/)
+      dbIndexes[Case.camel(r.indexname)] = {
+        type: /UNIQUE/i.test(r.indexdef) ? 'unique' : 'index',
+        table: Case.camel(r.tablename),
+        cols: m
+          ? m[1]
+              .split(',')
+              .map((c: string) => Case.camel(c.trim().replace(/"/g, '')))
+          : [],
+      }
+    }
+    return dbIndexes
+  }
+  override readonly dateNowDefaults: string[] = ['EXTRACT(EPOCH FROM']
+}
+
+const pgTypes = [
+  {
+    test: (t: string) =>
+      t.includes('int') ||
+      t.includes('serial') ||
+      t.includes('bigint') ||
+      t.includes('smallint'),
+    type: 'integer' as const,
+  },
+  { test: (t: string) => t.includes('bool'), type: 'boolean' as const },
+  { test: (t: string) => t.includes('bytea'), type: 'buffer' as const },
+  {
+    test: (t: string) =>
+      t.includes('double') ||
+      t.includes('real') ||
+      t.includes('numeric') ||
+      t.includes('decimal'),
+    type: 'number' as const,
+  },
+]
+
+function mapPgTypeToTsType(
+  sqlType: string,
+): SyncTypes.ColumnConstraint['type'] {
+  const t = (sqlType || '').toLowerCase()
+  for (const m of pgTypes) {
+    if (m.test(t)) return m.type
+  }
+  return 'string'
+}
+
+function parsePGColumnConstraint(
+  col: any,
+  primary: boolean,
+): SyncTypes.ColumnConstraint {
+  const cons: SyncTypes.ColumnConstraint = {
+    type: mapPgTypeToTsType(String(col.data_type || col.udt_name || '')),
+  }
+  if (primary) cons.primary = true
+  if (
+    typeof col.column_default === 'string' &&
+    col.column_default.includes('nextval')
+  )
+    cons.autoIncrement = true
+  if (col.is_nullable === 'YES' && !primary) cons.nullable = true
+
+  let def = col.column_default
+  switch (true) {
+    case def === null || def === undefined:
+      break
+    case typeof def === 'string' && def.toUpperCase() === 'NULL':
+      def = null
+      break
+    case typeof def === 'string' && !Number.isNaN(Number(def)):
+      def = Number(def)
+      break
+  }
+  if (def !== undefined) cons.default = def
+  return cons
+}
