@@ -159,11 +159,16 @@ export namespace DOMTools {
   }
 
   const RX_IS_HTML = /<[a-z/][\s\S]*>/i
+  const RX_IS_SVG_XML = /^\s*<(\?xml|svg|math)/i
 
   async function checkBlobHtml(data: Blob): Promise<string> {
-    const isMimeHtml = data.type.startsWith('text/html')
+    const type = data.type || ''
+    const isMimeHtml = type.startsWith('text/html') || type.startsWith('application/xhtml+xml')
+    if (type && !isMimeHtml) {
+      return ''
+    }
     const sample = isMimeHtml ? '' : await data.slice(0, 512).text()
-    const isHtml = isMimeHtml || RX_IS_HTML.test(sample)
+    const isHtml = isMimeHtml || (RX_IS_HTML.test(sample) && !RX_IS_SVG_XML.test(sample))
     return isHtml ? await data.text() : ''
   }
 
@@ -171,7 +176,11 @@ export namespace DOMTools {
     data: Response,
   ): Promise<{ html: string; init: ResponseInit }> {
     const contentType = data.headers.get('content-type') || ''
-    const isMimeHtml = contentType.includes('text/html')
+    const isMimeHtml = contentType.includes('text/html') || contentType.includes('application/xhtml+xml')
+
+    if (contentType && !isMimeHtml) {
+      return { html: '', init: {} }
+    }
 
     let isHtml = isMimeHtml
     if (!isHtml && data.body) {
@@ -180,7 +189,7 @@ export namespace DOMTools {
       if (reader) {
         const result = await reader.read()
         const sample = new TextDecoder().decode(result.value?.slice(0, 512))
-        isHtml = RX_IS_HTML.test(sample)
+        isHtml = RX_IS_HTML.test(sample) && !RX_IS_SVG_XML.test(sample)
         reader.releaseLock()
       }
     }
@@ -205,7 +214,8 @@ export namespace DOMTools {
     data: string | Response | Blob,
   ): Promise<HTMLContent> {
     if (is.string(data)) {
-      const isHtml = RX_IS_HTML.test(data.slice(0, 512))
+      const sample = data.slice(0, 512)
+      const isHtml = RX_IS_HTML.test(sample) && !RX_IS_SVG_XML.test(sample)
       return { content: isHtml ? data : '', responseInit: {} }
     }
 
