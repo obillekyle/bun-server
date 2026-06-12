@@ -31,10 +31,12 @@ export class ImageHandler extends Handler {
     const match = path.match(IMAGE_CAPTURE)
     if (!match) return
 
-    const config = getConfig()
     const [_, dir, name, sizeStr, ext] = match
     const size = sizeStr ? parseInt(sizeStr, 10) : null
-    const source = fs.resolve(config.root, `${dir}/${name}.${ext}`)
+    const source = fs.resolve(
+      Bakery.serveRoot,
+      `${dir.slice(1)}/${name}.${ext}`,
+    )
 
     return { dir, name, size, ext, source }
   }
@@ -45,10 +47,7 @@ export class ImageHandler extends Handler {
       if (routeInfo) return routeInfo.file
 
       const parsed = this.path(path)
-      const config = getConfig()
-      if (!parsed || config.blocked.match(path)) {
-        return response.error('Not Found')
-      }
+      if (!parsed) return response.error('Not Found')
 
       const { size: sizeStr, source } = parsed
       const size = sizeStr ? this.clampSize(sizeStr) : null
@@ -62,25 +61,25 @@ export class ImageHandler extends Handler {
       const imageCacheId = Bun.hash(path).toString(36)
       await fs.mkdir(cacheDir)
 
-      const masterPath = fs.resolve(cacheDir, `${imageCacheId}-main.bin`)
+      const masterPath = fs.resolve(cacheDir, `${imageCacheId}-main.webp`)
 
       let masterFile = Bun.file(masterPath)
       const masterMtime = masterFile.lastModified
 
-      if (!masterMtime || masterMtime < sourceTime) {
-        const imgObj = await sourceFile.image()
+      if (!fs.exists(masterFile) || masterMtime < sourceTime) {
+        const imgObj = sourceFile.image()
         await imgObj.webp({ quality: 80 }).write(masterPath)
         masterFile = Bun.file(masterPath)
       }
 
       if (!size) return masterFile
 
-      const cachePath = fs.resolve(cacheDir, `${imageCacheId}-${size}.bin`)
+      const cachePath = fs.resolve(cacheDir, `${imageCacheId}-${size}.webp`)
       let cacheFile = Bun.file(cachePath)
       const cacheMtime = cacheFile.lastModified
 
-      if (cacheMtime >= masterMtime) {
-        const imgObj = await masterFile.image()
+      if (!fs.exists(cacheFile) || cacheMtime < masterMtime) {
+        const imgObj = masterFile.image()
         const meta = await imgObj.metadata()
 
         const w = meta.width

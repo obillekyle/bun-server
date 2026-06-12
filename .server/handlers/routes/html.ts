@@ -49,8 +49,6 @@ async function sharedHandler(
     data.__file = routeInfo.info.path
   }
 
-  console.log(data)
-
   const html = await injectIfHtml(content, data)
   return html || response.error('Not Found')
 }

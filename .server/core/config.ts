@@ -1,4 +1,3 @@
-import { resolve } from 'node:path/posix'
 import { log } from '@server/logger'
 import {
   DEFAULT_BLOCKED_GLOBS,
@@ -31,7 +30,7 @@ const defaultConfig: Required<AppConfig> = {
   },
   onRequest: NOOP,
   proxy: {},
-  root: fs.cwd,
+  root: 'src',
   websocket: {
     message: NOOP,
     open: NOOP,
@@ -51,7 +50,7 @@ export async function initConfig(): Promise<Readonly<ProcessedAppConfig>> {
 
   overriden.importMap = Object.assign(
     { '@client/utils': '.server/client/utils' },
-    serverConfig.importMap || {}
+    serverConfig.importMap || {},
   )
 
   const blockedGlob = [
@@ -63,7 +62,7 @@ export async function initConfig(): Promise<Readonly<ProcessedAppConfig>> {
 
   cachedConfig = Object.assign(overriden, {
     blocked: new Bun.Glob(`{${blockedGlob}}`),
-    root: resolve(overriden.root),
+    root: fs.resolve(overriden.root),
   })
 
   return Object.freeze(cachedConfig)

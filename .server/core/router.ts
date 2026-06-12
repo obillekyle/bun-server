@@ -11,6 +11,7 @@ import { JsonResponseData } from '@server/utils'
 import { ETag, injectIfHtml } from '@server/utils/http'
 import { errorMsg, getElapsed, serveLog } from '../logger'
 import { PluginHooks } from './plugins'
+import { DEFAULT_BLOCKED_GLOBS } from '@server/utils/constants'
 
 const dummyRequest = new Request('http://localhost/__internal__')
 
@@ -46,6 +47,9 @@ export function handleRequest(
 export async function handleRequest(req: Request) {
   const url = new URL(req.url)
   const path = url.pathname
+  if (DEFAULT_BLOCKED_GLOBS.some(glob => path.includes(glob))) {
+    return new Response('Forbidden', { status: 403 })
+  }
 
   if (Bakery.config.blocked.match(path)) {
     return new Response('Forbidden', { status: 403 })
