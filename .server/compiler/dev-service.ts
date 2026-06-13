@@ -1,6 +1,7 @@
 import { watch } from 'node:fs/promises'
 import { platform } from 'node:os'
 import { relative, resolve } from 'node:path'
+import { initRoutes } from '@server/cache'
 import { Bakery } from '@server/core/bakery'
 import { Glob } from '@server/utils/fs'
 import { compLog, serveLog } from '../logger'
@@ -132,7 +133,8 @@ export async function handleDevMaster(): Promise<never> {
 }
 
 const pkgFilesGlob = Glob.strings('package.json', 'bun.lock', 'bun.lockb')
-const fileTypeGlob = Glob.fromExt(['ts', 'tsx', 'js', 'jsx', 'css', 'html'])
+const fileTypeGlob = Glob.fromExt(['css', 'html', 'ts', 'js', 'tsx', 'jsx'])
+const tsScriptGlob = Glob.fromExt(['ts', 'js', 'html'])
 const watchIgnores = Glob.strings(
   'node_modules/**/*',
   '**/.git/**/*',
@@ -159,6 +161,11 @@ async function processFileEvent(
       case prioFilesGlob.match(filePath):
         serveLog.BACKEND_CHANGE({ file: filePath })
         process.exit(42)
+        break
+
+      case tsScriptGlob.match(filePath):
+        initRoutes()
+        notifySockets(server, filePath)
         break
 
       case fileTypeGlob.match(filePath):

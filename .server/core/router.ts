@@ -1,17 +1,16 @@
 import { Bakery } from '@server/core/bakery'
-import { is } from '@server/utils/common'
-import { log } from '@server/logger'
-import { response } from '@server/utils/http'
 import { Session } from '@server/core/session'
+import { DefaultErrorHandler } from '@server/handlers/assets/static'
 import type { Handler } from '@server/handlers/core/$base'
 import { ErrorHandler } from '@server/handlers/core/$error'
 import { WebSocketHandler } from '@server/handlers/core/$websocket'
-import { DefaultErrorHandler } from '@server/handlers/assets/static'
+import { log } from '@server/logger'
 import { JsonResponseData } from '@server/utils'
-import { ETag, injectIfHtml } from '@server/utils/http'
+import { is } from '@server/utils/common'
+import { DEFAULT_BLOCKED_GLOBS } from '@server/utils/constants'
+import { ETag, injectIfHtml, response } from '@server/utils/http'
 import { errorMsg, getElapsed, serveLog } from '../logger'
 import { PluginHooks } from './plugins'
-import { DEFAULT_BLOCKED_GLOBS } from '@server/utils/constants'
 
 const dummyRequest = new Request('http://localhost/__internal__')
 
@@ -19,25 +18,29 @@ export async function upgradeWebsocket(
   req: Request,
   path: string,
 ): Promise<boolean | undefined> {
-  const wsHandlers = Bakery.handlers.websocket.list()
-  for (const HandlerClass of wsHandlers) {
-    try {
-      const canHandle = await HandlerClass.canHandle(path, req)
-      if (!canHandle) continue
+  try {
+    const wSockH = Bakery.handlers.websocket
+    const cached = await wSockH.getValidCache(path, req)
 
-      const upgraded = await HandlerClass.handle(path, req)
-      if (upgraded) return true
-
-      return false
-
-      //
-    } catch (err: any) {
-      serveLog.UNHANDLED_ERR({
-        error: `Error checking WebSocketHandler ${HandlerClass.name}: ${errorMsg(err)}`,
-      })
-
-      return false
+    if (cached) {
+      const upgraded = await cached.handle(path, req)
+      return Boolean(upgraded)
     }
+
+    for (const HandlerClass of wSockH.list()) {
+      const canHandle = await HandlerClass.canHandle(path, req)
+      if (canHandle) {
+        wSockH.routeCache.set(path, HandlerClass)
+        const upgraded = await HandlerClass.handle(path, req)
+        return Boolean(upgraded)
+      }
+    }
+  } catch (err: any) {
+    serveLog.UNHANDLED_ERR({
+      error: `Error checking WebSocketHandler: ${errorMsg(err)}`,
+    })
+
+    return false
   }
 }
 
@@ -67,9 +70,12 @@ export async function handleRequest(req: Request) {
   const pluginResponse = await PluginHooks.onRequest(req)
   if (pluginResponse) return pluginResponse
 
-  const fetchHandlers = Bakery.handlers.fetch.list()
+  const fetchH = Bakery.handlers.fetch
+  const cached = await fetchH.getValidCache(path, req)
 
-  for (const HandlerClass of fetchHandlers) {
+  if (cached) return await cached.handle(path, req)
+
+  for (const HandlerClass of fetchH.list()) {
     const canHandle = await HandlerClass.canHandle(path, req)
     if (canHandle) return await HandlerClass.handle(path, req)
   }
@@ -175,24 +181,32 @@ export async function handleRequestError(
   const pluginRes = await PluginHooks.onError(error, req)
   if (pluginRes) return pluginRes
 
-  const configError = await Bakery.config.onError(error)
+  const bakeryError = Object.assign({}, error, {
+    errorBody: `${error.errorBody} at ${path}`,
+  })
+
+  const configError = await Bakery.config.onError(bakeryError)
   if (configError instanceof Response) {
     const injectedRes = await injectIfHtml(configError)
     return injectedRes || configError
   }
 
-  for (const HandlerClass of Bakery.handlers.error.list()) {
-    try {
-      const canHandle = await HandlerClass.canHandle(path, req, error)
-      if (!canHandle) continue
+  try {
+    const errorH = Bakery.handlers.error
+    const cached = await errorH.getValidCache(path, req, error)
+    if (cached) return await cached.handle(path, req, error)
 
-      const res = await HandlerClass.handle(path, req, error)
-      return res
-    } catch (err: any) {
-      serveLog.UNHANDLED_ERR({
-        error: `Error in ErrorHandler ${HandlerClass.name}: ${errorMsg(err)}`,
-      })
+    for (const HandlerClass of Bakery.handlers.error.list()) {
+      const canHandle = await HandlerClass.canHandle(path, req, error)
+      if (canHandle) {
+        errorH.routeCache.set(path, HandlerClass)
+        return await HandlerClass.handle(path, req, error)
+      }
     }
+  } catch (err: any) {
+    serveLog.UNHANDLED_ERR({
+      error: `Error in ErrorHandler: ${errorMsg(err)}`,
+    })
   }
 
   return DefaultErrorHandler.handle(path, req, error)

@@ -35,4 +35,12 @@ export class HandlerMap<T = typeof Handler> extends Map<any, number> {
 
     return this.cachedList
   }
+
+  async getValidCache(path: string, ...params: any[]): Promise<T | null> {
+    const cached: any = this.routeCache.get(path)
+    if (!cached) return null
+
+    const canHandle = await Try(() => cached!.canHandle(path, ...params))
+    return canHandle ? cached : null
+  }
 }

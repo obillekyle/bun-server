@@ -1,9 +1,8 @@
 import type * as _schema from '~/schema'
-
-import type { Handler } from './handlers/$base'
-import type * as HandlerError from './handlers/$error'
-import type * as HandlerRegistry from './handlers/$registry'
 import type * as HandlerWs from './handlers/$websocket'
+import type { Handler } from './handlers/core/$base'
+import type * as HandlerError from './handlers/core/$error'
+import type * as HandlerRegistry from './handlers/core/$registry'
 import type * as _logger from './logger/logger'
 import type * as _plugins from './plugins/types'
 
