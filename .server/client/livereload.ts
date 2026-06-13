@@ -139,7 +139,8 @@ function patchDOM(current: Node, incoming: Node) {
 }
 
 function connect() {
-  const ws = new WebSocket(`ws://${location.host}/_livereload`)
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const ws = new WebSocket(`${protocol}//${location.host}/_livereload`)
 
   const safeStringify = (val: any): string => {
     try {
