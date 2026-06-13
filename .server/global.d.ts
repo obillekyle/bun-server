@@ -77,6 +77,7 @@ declare global {
   interface Bakery {
     getRequest<T = MapOf<any>>(): Request & { body: T }
     server?: Bun.Server<any>
+    connectedLoggers?: Set<any>
     readonly cacheDir: string
     readonly dataDir: string
     readonly version: string

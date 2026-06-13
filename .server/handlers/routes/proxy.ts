@@ -6,7 +6,7 @@ import { Handler } from '../core/$base'
 
 export class ProxyHandler extends Handler {
   static get proxies() {
-    return Bakery.config.proxy || {}
+    return Bakery.config.proxy
   }
 
   static canHandle(path: string) {

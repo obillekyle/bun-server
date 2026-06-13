@@ -117,8 +117,7 @@ export function startAnalyticsLoop(server: any) {
   if (analyticsLoopTimer) clearInterval(analyticsLoopTimer)
   analyticsLoopTimer = setInterval(async () => {
     try {
-      const activeLoggersCount =
-        (globalThis as any).Bakery?.connectedLoggers?.size || 0
+      const activeLoggersCount = core.connectedLoggers.size
       const pingStart = Bun.nanoseconds()
       const pingVal = await Try.return(async function getPing() {
         const res = await server.fetch(`http://localhost/_analytics/ping`)
@@ -277,7 +276,7 @@ export async function computeStats(
     bunVersion: Bun.version,
     platform: process.platform,
     arch: process.arch,
-    activeLoggers: (globalThis as any).Bakery?.connectedLoggers?.size || 0,
+    activeLoggers: core.connectedLoggers.size,
     activeSessions: (await getSession()).count,
     routeHits: latestHistory.routeHits,
     apiHits: latestHistory.apiHits || 0,
@@ -353,10 +352,10 @@ function checkCsrfOrigin(req: Request): boolean {
   const origin = req.headers.get('origin') || req.headers.get('referer') || ''
   const requestedWith = req.headers.get('x-requested-with') || ''
 
-  const host = Bakery.config.host || 'localhost'
+  const host = Bakery.config.host
   const port = process.env.PORT
     ? String(process.env.PORT)
-    : String(Bakery.config.port || '3000')
+    : String(Bakery.config.port)
 
   const allowedOrigins = [
     `http://${host}:${port}`,

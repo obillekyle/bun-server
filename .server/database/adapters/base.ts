@@ -253,8 +253,8 @@ export abstract class DBAdapter {
     tsIndexes: SyncTypes.DBIndexes,
     schemaPath: string,
   ): Promise<void> {
-    const { syncDatabaseSchema } = await import('../sync/engine')
-    await syncDatabaseSchema(this, constraints, tsIndexes, schemaPath)
+    const { SyncEngine } = await import('../sync/engine')
+    await SyncEngine.run(this, constraints, tsIndexes, schemaPath)
   }
 
   async executeInsert(
@@ -364,7 +364,7 @@ export abstract class DBAdapter {
     baseName: string,
     envOverride?: Record<string, string>,
   ): Promise<BackupResult | null> {
-    const backupDir = `${process.cwd()}/.server/database/.backups`
+    const backupDir = `${process.cwd()}/.server/.data/backups`
     const backupName = `${baseName}.${Date.now()}${ext}`
     const fullPath = `${backupDir}/${backupName}`
     await mkdir(backupDir, { recursive: true })

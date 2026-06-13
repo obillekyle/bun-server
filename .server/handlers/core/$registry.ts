@@ -1,4 +1,5 @@
 import { LRUCache } from '@server/cache/lru'
+import { Try } from '@server/utils/common'
 import type { Handler } from './$base'
 
 export class HandlerMap<T = typeof Handler> extends Map<any, number> {

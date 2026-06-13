@@ -1,10 +1,12 @@
 import { watch } from 'node:fs/promises'
-import { platform } from 'node:os'
 import { relative, resolve } from 'node:path'
 import { initRoutes } from '@server/cache'
 import { Bakery } from '@server/core/bakery'
+import { Try } from '@server/utils'
 import { Glob } from '@server/utils/fs'
 import { compLog, serveLog } from '../logger'
+import { PromptTracker } from './prompt-tracker'
+import { Spawn } from './spawn'
 
 export function notifySockets(server: any, filename: string) {
   const serveRoot = Bakery.serveRoot || '.'
@@ -16,103 +18,164 @@ export function notifySockets(server: any, filename: string) {
 }
 
 export function spawnLoggerTerminal() {
-  const os = platform()
   const scriptArgs = `bun ./.server/client/log.ts ${process.pid}`
+  Spawn.open(scriptArgs)
+}
 
-  switch (os) {
-    case 'win32':
-      try {
-        Bun.spawn([
-          'cmd.exe',
-          '/c',
-          'start',
-          'cmd.exe',
-          '/c',
-          scriptArgs,
-        ]).unref()
-      } catch (err) {
-        serveLog.UNHANDLED_ERR({
-          error: `Failed to spawn logger terminal on Windows: ${err}`,
-        })
-      }
-      break
-    case 'darwin':
-      try {
-        Bun.spawn([
-          'osascript',
-          '-e',
-          `tell application "Terminal" to do script "cd \\"${process.cwd()}\\" && ${scriptArgs}"`,
-        ]).unref()
-      } catch (err) {
-        serveLog.UNHANDLED_ERR({
-          error: `Failed to spawn logger terminal on macOS: ${err}`,
-        })
-      }
-      break
-    default: {
-      const terminals = [
-        ['x-terminal-emulator', '-e', scriptArgs],
-        ['gnome-terminal', '--', 'sh', '-c', scriptArgs],
-        ['konsole', '-e', scriptArgs],
-        ['xfce4-terminal', '-e', scriptArgs],
-        ['kitty', 'sh', '-c', scriptArgs],
-        ['alacritty', '-e', 'sh', '-c', scriptArgs],
-        ['xterm', '-e', scriptArgs],
-      ]
-      let spawned = false
-      let lastError: any = null
-      for (const cmd of terminals) {
-        try {
-          Bun.spawn(cmd).unref()
-          spawned = true
-          break
-        } catch (err) {
-          lastError = err
-        }
-      }
-      if (!spawned) {
-        serveLog.UNHANDLED_ERR({
-          error: `Could not spawn client logger terminal. Make sure x-terminal-emulator, gnome-terminal, konsole, or xterm is installed. (Last error: ${lastError?.message || lastError})`,
-        })
-      }
+function setupPingInterval(
+  url: string,
+  signal: AbortSignal,
+  onServerUp: () => void,
+): any {
+  const interval = setInterval(async () => {
+    if (signal.aborted) return clearInterval(interval)
+
+    try {
+      await fetch(url, {
+        method: 'HEAD',
+        headers: { 'User-Agent': 'dev-watcher-ping' },
+      })
+      onServerUp()
+      clearInterval(interval)
+    } catch {
+      // Continue waiting
     }
+  }, 200)
+  return interval
+}
+
+function setupPromptCheckInterval(
+  workerPid: number,
+  signal: AbortSignal,
+  isRawModeActive: () => boolean,
+  isServerUp: () => boolean,
+  disableRaw: () => void,
+  enableRaw: () => void,
+): any {
+  const interval = setInterval(() => {
+    if (signal.aborted) return clearInterval(interval)
+
+    const promptActive = PromptTracker.isActive(workerPid)
+
+    if (promptActive && isRawModeActive()) return disableRaw()
+    if (!promptActive && isServerUp() && !isRawModeActive()) return enableRaw()
+  }, 100)
+
+  return interval
+}
+
+function createTTYManager(getWorker: () => Bun.Subprocess | null) {
+  let rawModeActive = false
+
+  const stdinHandler = (key: string) => {
+    switch (key.toLowerCase()) {
+      case '\u0003':
+        return getWorker()?.kill('SIGINT')
+      case 's':
+        return process.emit('SIGINT')
+      case 'd':
+        serveLog.SPAWN_LOGGER()
+        return spawnLoggerTerminal()
+    }
+  }
+
+  return {
+    get isRawModeActive() {
+      return rawModeActive
+    },
+    disableRawMode: () => {
+      rawModeActive = false
+      if (!process.stdin.isTTY) return
+
+      Try(() => process.stdin.setRawMode(false))
+      process.stdin.off('data', stdinHandler)
+      Try(() => process.stdin.pause())
+    },
+    enableRawMode: () => {
+      rawModeActive = true
+      if (!process.stdin.isTTY) return
+
+      Try(() => {
+        process.stdin.setRawMode(true)
+        process.stdin.resume()
+        process.stdin.setEncoding('utf8')
+        process.stdin.off('data', stdinHandler)
+        process.stdin.on('data', stdinHandler)
+      })
+    },
   }
 }
 
 export async function handleDevMaster(): Promise<never> {
+  const { initConfig } = await import('@server/core/config')
+  const config = await initConfig()
+
+  const port = process.env.PORT
+    ? parseInt(process.env.PORT, 10)
+    : config.port || 3000
+  const host =
+    config.host === '0.0.0.0' ? '127.0.0.1' : config.host || '127.0.0.1'
+  const url = `http://${host}:${port}/`
+
   let workerProc: Bun.Subprocess<'inherit', 'inherit', 'inherit'> | null = null
+  let abortController: AbortController | null = null
 
-  process.on('SIGINT', () => workerProc?.kill('SIGINT'))
-  process.on('SIGTERM', () => workerProc?.kill('SIGTERM'))
+  const tty = createTTYManager(() => workerProc)
 
-  if (process.stdin.isTTY) {
-    process.stdin.setRawMode(true)
-    process.stdin.resume()
-    process.stdin.setEncoding('utf8')
-    process.stdin.on('data', (key: string) => {
-      switch (key.toLowerCase()) {
-        case '\u0003':
-          return workerProc?.kill('SIGINT')
-        case 's':
-          return process.emit('SIGINT')
-        case 'd':
-          serveLog.SPAWN_LOGGER()
-          spawnLoggerTerminal()
-          return
-      }
-    })
+  const cleanupAndExit = () => {
+    workerProc?.kill('SIGINT')
+    tty.disableRawMode()
+    if (workerProc?.pid) {
+      PromptTracker.deactivate(workerProc.pid)
+    }
+    process.exit(0)
   }
 
+  process.on('SIGINT', cleanupAndExit)
+  process.on('SIGTERM', cleanupAndExit)
+
   async function startWatcher(): Promise<never> {
+    tty.disableRawMode()
+    abortController?.abort()
+    abortController = new AbortController()
+    const signal = abortController.signal
+
+    if (workerProc?.pid) {
+      PromptTracker.deactivate(workerProc.pid)
+    }
+
     workerProc = Bun.spawn(
       ['bun', '--smol', '.server/worker.ts', '--dev', '--dev-worker'],
       {
         stdio: ['inherit', 'inherit', 'inherit'],
-        env: { ...process.env, DEV_WATCHER_ACTIVE: '1' },
+        env: {
+          ...process.env,
+          DEV_WATCHER_ACTIVE: '1',
+        },
       },
     )
 
+    let serverUp = false
+    const pingInterval = setupPingInterval(url, signal, () => {
+      serverUp = true
+    })
+    const checkInterval = setupPromptCheckInterval(
+      workerProc.pid,
+      signal,
+      () => tty.isRawModeActive,
+      () => serverUp,
+      tty.disableRawMode,
+      tty.enableRawMode,
+    )
+
     const code = (await workerProc.exited) ?? 0
+
+    clearInterval(pingInterval)
+    clearInterval(checkInterval)
+    tty.disableRawMode()
+    if (workerProc?.pid) {
+      PromptTracker.deactivate(workerProc.pid)
+    }
 
     switch (code) {
       case 42:
@@ -121,10 +184,9 @@ export async function handleDevMaster(): Promise<never> {
         return startWatcher()
       case 130:
         serveLog.SHUTTING_DOWN()
-        process.exit(0)
-        break
+        return process.exit(0)
       default:
-        process.exit(code)
+        return process.exit(code)
     }
   }
 
@@ -141,11 +203,11 @@ const watchIgnores = Glob.strings(
   '**/.vscode/**/*',
   '**/.backups/**/*',
   '**/.cache/**/*',
+  'schema.ts',
 )
 
 const prioFilesGlob = Glob.strings(
   'server.config.ts',
-  'schema.ts',
   'api/**/*',
   '**/.server/**/*',
   '**/*.tsx',
@@ -160,25 +222,17 @@ async function processFileEvent(
     switch (true) {
       case prioFilesGlob.match(filePath):
         serveLog.BACKEND_CHANGE({ file: filePath })
-        process.exit(42)
-        break
-
+        return process.exit(42)
       case tsScriptGlob.match(filePath):
         initRoutes()
-        notifySockets(server, filePath)
-        break
-
+        return notifySockets(server, filePath)
       case fileTypeGlob.match(filePath):
-        notifySockets(server, filePath)
-        break
+        return notifySockets(server, filePath)
     }
   }
 
-  const exists = await Bun.file(filePath).exists()
-
-  if (exists) {
-    compLog.FILE_STATUS({ status: 'changed', file: filePath })
-    return
+  if (await Bun.file(filePath).exists()) {
+    return compLog.FILE_STATUS({ status: 'changed', file: filePath })
   }
 
   compLog.FILE_DEL({ file: filePath })

@@ -73,37 +73,6 @@ async function syncAppConfig(newPaths: MapOf<string[]>): Promise<boolean> {
   return false
 }
 
-async function syncRootConfig(newPaths: MapOf<string[]>): Promise<boolean> {
-  const rootPath = './tsconfig.json'
-  let rootConfig: any = { compilerOptions: { paths: {} } }
-  if (await Bun.file(rootPath).exists()) {
-    try {
-      const text = await Bun.file(rootPath).text()
-      const stripped = text
-        .replace(/\/\/.*$/gm, '')
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-      rootConfig = JSON.parse(stripped)
-    } catch (_e) {}
-  }
-  rootConfig.compilerOptions = rootConfig.compilerOptions || {}
-  delete rootConfig.compilerOptions.baseUrl
-
-  const mergedRootPaths = {
-    ...(rootConfig.compilerOptions.paths || {}),
-    ...newPaths,
-  }
-
-  if (
-    JSON.stringify(rootConfig.compilerOptions.paths || {}) !==
-    JSON.stringify(mergedRootPaths)
-  ) {
-    rootConfig.compilerOptions.paths = mergedRootPaths
-    await Bun.write(rootPath, JSON.stringify(rootConfig, null, 2))
-    return true
-  }
-  return false
-}
-
 export async function syncTSConfigPaths(
   userImportMap: MapOf<string>,
 ): Promise<void> {
@@ -112,9 +81,8 @@ export async function syncTSConfigPaths(
     const newPaths = buildTSConfigPaths(userImportMap, rootDir)
 
     const appChanged = await syncAppConfig(newPaths)
-    const rootChanged = await syncRootConfig(newPaths)
 
-    if (appChanged || rootChanged) {
+    if (appChanged) {
       serveLog.TSCONFIG_SYNCED()
     }
   } catch (err: any) {

@@ -6,7 +6,7 @@ import { errorMsg, pluginLog, serveLog } from '../logger'
 import { Try } from '../utils'
 
 function getPlugins() {
-  return Bakery.config.plugins || []
+  return Bakery.config.plugins
 }
 
 async function normalizePluginResult(result: Handler.Response) {

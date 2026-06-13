@@ -1,3 +1,4 @@
+import { Bakery } from '@server/core/bakery'
 import { Logger, messageLogger } from '@server/logger'
 import { Try } from '@server/utils'
 
@@ -9,9 +10,7 @@ const MESSAGES = messageLogger(new Logger('db-backup'), {
 
 export async function backupDatabase(adapter?: any) {
   const conn = adapter || (await import('./' + 'connection')).connection
-  const [err, result] = await Try.catch(
-    conn.backup((globalThis as any).Bakery?.config?.backups ?? 10),
-  )
+  const [err, result] = await Try.catch(conn.backup(Bakery.config.backups))
 
   if (err) {
     MESSAGES.BACKUP_FAILED({ error: err.message })

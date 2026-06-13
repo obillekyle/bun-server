@@ -14,32 +14,35 @@ const syncMsgs = {
 
 const MESSAGES = messageLogger(logger, syncMsgs)
 
-export async function syncSQLSchema() {
-  await initializeDatabaseConnection()
-  const schemaPath = `${process.cwd()}/schema.ts`
-  const schemaFile = Bun.file(schemaPath)
+export class SyncService {
+  protected constructor() {}
 
-  let constraints: SyncTypes.DBConstraints = {}
-  let tsIndexes: SyncTypes.DBIndexes = {}
+  static async run() {
+    await initializeDatabaseConnection()
+    const schemaPath = `${process.cwd()}/schema.ts`
+    const schemaFile = Bun.file(schemaPath)
 
-  if (await schemaFile.exists()) {
-    const [err, schemaModule] = await Try.catch(
-      import(`${schemaPath}?t=${Date.now()}`),
-    )
+    let constraints: SyncTypes.DBConstraints = {}
+    let tsIndexes: SyncTypes.DBIndexes = {}
 
-    if (err) MESSAGES.INVALID_SCHEMA()
+    if (await schemaFile.exists()) {
+      const [err, schemaModule] = await Try.catch(
+        import(`${schemaPath}?t=${Date.now()}`),
+      )
 
-    if (schemaModule?.DBInfo) {
-      constraints = schemaModule.DBInfo.constraints ?? {}
-      tsIndexes = schemaModule.DBInfo.indexes ?? schemaModule.indexes ?? {}
-    } else if (!err) {
-      MESSAGES.NO_DBINFO()
+      if (err) MESSAGES.INVALID_SCHEMA()
+
+      if (schemaModule?.DBInfo) {
+        constraints = schemaModule.DBInfo.constraints ?? {}
+        tsIndexes = schemaModule.DBInfo.indexes ?? schemaModule.indexes ?? {}
+      } else if (!err) {
+        MESSAGES.NO_DBINFO()
+      }
     }
-  }
 
-  const argv = process.argv.slice(2)
-  if (argv.includes('--help') || argv.includes('-h')) {
-    console.log(`
+    const argv = process.argv.slice(2)
+    if (argv.includes('--help') || argv.includes('-h')) {
+      console.log(`
 Usage: bun run db:sync [--choose=db|ts] [--dry-run] [--force-sync] [--help]
 
 Flags:
@@ -49,13 +52,14 @@ Flags:
   --force-sync    In production, allow destructive changes
   --help, -h      Show this help message
 `)
-    return
-  }
+      return
+    }
 
-  await connection.syncSchema(constraints, tsIndexes, schemaPath)
+    await connection.syncSchema(constraints, tsIndexes, schemaPath)
+  }
 }
 
 if (import.meta.main) {
-  await syncSQLSchema()
+  await SyncService.run()
   process.exit(0)
 }

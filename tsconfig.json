@@ -1,9 +1,6 @@
 {
   "compilerOptions": {
-    "lib": [
-      "ESNext",
-      "DOM"
-    ],
+    "lib": ["ESNext", "DOM"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
@@ -24,36 +21,16 @@
     "forceConsistentCasingInFileNames": true,
     "noPropertyAccessFromIndexSignature": false,
     "paths": {
-      "@server/*": [
-        "./.server/*"
-      ],
-      "@database/*": [
-        "./.server/database/*"
-      ],
-      "@api/*": [
-        "./api/*"
-      ],
-      "@plugins/*": [
-        "./.server/plugins/*"
-      ],
-      "~/*": [
-        "./*"
-      ],
-      "@client/utils": [
-        "./.server/client/utils"
-      ],
-      "helpers/*": [
-        "./src/script/helpers/*"
-      ]
+      "@server/*": ["./.server/*"],
+      "@database/*": ["./.server/database/*"],
+      "@api/*": ["./api/*"],
+      "@plugins/*": ["./.server/plugins/*"],
+      "~/*": ["./*"]
     }
   },
   "files": [],
   "references": [
-    {
-      "path": "./tsconfig.app.json"
-    },
-    {
-      "path": "./tsconfig.server.json"
-    }
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.server.json" }
   ]
 }

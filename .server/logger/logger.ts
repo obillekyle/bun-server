@@ -1,3 +1,4 @@
+import { PromptTracker } from '@server/compiler/prompt-tracker'
 import { Case } from '@server/utils/common/case'
 import { match } from '@server/utils/common/match'
 
@@ -103,7 +104,7 @@ function getFormattedLine(
     message += `${prefix + stack.join(prefix)}%0`
   }
 
-  message += `%0${(newLine || index < totalLines - 1) ? '\n' : ''}`
+  message += `%0${newLine || index < totalLines - 1 ? '\n' : ''}`
   return message
 }
 
@@ -115,7 +116,14 @@ export function log(
 
   const lines = msg.split('\n')
   for (let i = 0; i < lines.length; i++) {
-    const formatted = getFormattedLine(lines[i], i, lines.length, level, by, newLine)
+    const formatted = getFormattedLine(
+      lines[i],
+      i,
+      lines.length,
+      level,
+      by,
+      newLine,
+    )
     if (formatted !== null) {
       console.write(colorizeTerminal(formatted))
     }
@@ -124,12 +132,34 @@ export function log(
   Promise.try(() => onLogCallback?.({ level, by, msg })).catch(() => {})
 }
 
-export function confirm(msg: string, by = 'global'): boolean {
-  const promptMsg = `%y${msg} (y/n): %r`
+function withPromptTracker<T>(fn: () => T): T {
+  const isWatcherActive = process.env.DEV_WATCHER_ACTIVE === '1'
+  if (isWatcherActive) {
+    PromptTracker.activate(process.pid)
+  }
 
-  log({ level: 'warn', by, msg: promptMsg }, false)
-  const response = prompt('')?.trim().toLowerCase()
-  return response === 'y' || response === 'yes'
+  try {
+    return fn()
+  } finally {
+    if (isWatcherActive) {
+      PromptTracker.deactivate(process.pid)
+    }
+  }
+}
+
+export function confirm(msg: string, by = 'global'): boolean {
+  return withPromptTracker(() => {
+    const promptMsg = `%y${msg} (y/n): %r`
+
+    const formatted = getFormattedLine(promptMsg, 0, 1, 'warn', by, false)
+    const promptStr = formatted ? colorizeTerminal(formatted) : ''
+    Promise.try(() =>
+      onLogCallback?.({ level: 'warn', by, msg: promptMsg }),
+    ).catch(() => {})
+
+    const response = prompt(promptStr)?.trim().toLowerCase()
+    return response === 'y' || response === 'yes'
+  })
 }
 
 export function select(msg: string, options: string[], by = 'global'): string {
@@ -137,22 +167,36 @@ export function select(msg: string, options: string[], by = 'global'): string {
   return options[index] as string
 }
 
-export function selectIndex(msg: string, opt: string[], by = 'global'): number {
-  log({ by, msg: '\n' })
-  log({ by, msg })
-
-  opt.forEach((opt, i) => void log({ by, msg: `  ${i + 1}. ${opt}` }))
+function readValidIndex(_msg: string, max: number, by: string): number {
+  const promptMsg = `Select an option (1-${max}): `
+  const formatted = getFormattedLine(promptMsg, 0, 1, 'info', by, false)
+  const promptStr = formatted ? colorizeTerminal(formatted) : ''
 
   while (true) {
-    log({ by, msg: `Select an option (1-${opt.length}): ` }, false)
-    const response = prompt('')?.trim()
+    Promise.try(() =>
+      onLogCallback?.({ level: 'info', by, msg: promptMsg }),
+    ).catch(() => {})
+
+    const response = prompt(promptStr)?.trim()
     const num = parseInt(response || '', 10)
-    if (!Number.isNaN(num) && num >= 1 && num <= opt.length) {
-      log({ by, msg: '\n' })
+    if (!Number.isNaN(num) && num >= 1 && num <= max) {
       return num - 1
     }
     log({ level: 'error', by, msg: 'Invalid option.' })
   }
+}
+
+export function selectIndex(msg: string, opt: string[], by = 'global'): number {
+  return withPromptTracker(() => {
+    log({ by, msg: '\n' })
+    log({ by, msg })
+
+    opt.forEach((opt, i) => void log({ by, msg: `  ${i + 1}. ${opt}` }))
+
+    const index = readValidIndex(msg, opt.length, by)
+    log({ by, msg: '\n' })
+    return index
+  })
 }
 
 export class Logger {

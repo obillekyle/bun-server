@@ -1,4 +1,3 @@
-import { is } from '@server/utils/common'
 import { copyFile, mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -130,7 +129,7 @@ export class SQLiteAdapter extends DBAdapter {
       return null
     const ext = path.extname(this.filename),
       base = path.basename(this.filename, ext)
-    const backupDir = `${path.dirname(this.filename)}/.backups`,
+    const backupDir = `${path.dirname(this.filename)}/backups`,
       backupName = `${base}.${Date.now()}${ext}`
     await mkdir(backupDir, { recursive: true })
     await copyFile(this.filename, `${backupDir}/${backupName}`)

@@ -55,10 +55,10 @@ export async function setupServer(): Promise<void> {
 }
 
 export async function runStartupBanner(): Promise<void> {
-  const host = Bakery.config.host || '0.0.0.0'
+  const host = Bakery.config.host
   const port = process.env.PORT
     ? parseInt(process.env.PORT, 10)
-    : Bakery.config.port || 3000
+    : Bakery.config.port
 
   serveLog.SERVER_STARTED()
 
@@ -108,7 +108,7 @@ export async function startup(): Promise<void> {
     const { syncTSConfigPaths } = await import('./tsconfig-sync')
     await initConfig()
     await initImportMap()
-    await syncTSConfigPaths(Bakery.config.importMap || {})
+    await syncTSConfigPaths(Bakery.config.importMap)
   } catch (error: any) {
     console.error('Config init error stack:', error)
     serveLog.UNHANDLED_ERR({ error: `Config init failed: ${errorMsg(error)}` })
@@ -116,8 +116,8 @@ export async function startup(): Promise<void> {
   }
 
   try {
-    const { syncSQLSchema } = await import('@database/sync')
-    await syncSQLSchema()
+    const { SyncService } = await import('@database/sync')
+    await SyncService.run()
   } catch (error: any) {
     serveLog.UNHANDLED_ERR({ error: `Startup failed: ${errorMsg(error)}` })
     process.exit(1)

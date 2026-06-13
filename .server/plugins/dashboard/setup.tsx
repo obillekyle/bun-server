@@ -113,8 +113,8 @@ class DashboardHandler extends Handler {
 export function setupDashboard(options?: { whitelist?: string[] }) {
   dashboardOptions = options
 
-  if ((globalThis as any).Bakery) {
-    ;(globalThis as any).Bakery.connectedLoggers = connectedLoggers
+  if (Bakery) {
+    Bakery.connectedLoggers = connectedLoggers
   }
 
   setLogCallback(entry => {
@@ -209,7 +209,7 @@ async function handleJsAsset() {
   }
 
   if (!isDevWorker) {
-    const tmpPath = `${(globalThis as any).Bakery?.cacheDir || '.server/.cache'}/_dashboard.js`
+    const tmpPath = `${Bakery.cacheDir}/_dashboard.js`
     await Bun.write(tmpPath, bundleResult.content)
     const writtenFile = Bun.file(tmpPath)
     if (writtenFile.size > 0) {
@@ -453,8 +453,8 @@ function checkCsrfMiddleware(req: Request, path: string) {
 
   const origin = req.headers.get('origin') || req.headers.get('referer') || ''
   const requestedWith = req.headers.get('x-requested-with') || ''
-  const host = Bakery.config.host || 'localhost'
-  const port = String(process.env.PORT || Bakery.config.port || '3000')
+  const host = Bakery.config.host
+  const port = String(process.env.PORT || Bakery.config.port)
   const allowedOrigins = [
     `http://${host}:${port}`,
     `https://${host}:${port}`,
@@ -475,7 +475,7 @@ function getClientIp(req: Request): string {
   const forwarded = req.headers.get('x-forwarded-for')
   if (forwarded) return forwarded.split(',')[0].trim()
   return (
-    (globalThis as any).Bakery?.server?.requestIP(req)?.address || '127.0.0.1'
+    Bakery.server?.requestIP(req)?.address || '127.0.0.1'
   )
 }
 

@@ -59,7 +59,7 @@ function resolveDepModule(pkgData: PackageJson, baseMod: string): string {
 
 export async function initImportMap() {
   const pkg = require('~/package.json')
-  const map = Bakery.config.importMap || {}
+  const map = Bakery.config.importMap
   const deps = pkg.dependencies || {}
 
   const resolvedMap: MapOf<string> = {}
