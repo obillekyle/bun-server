@@ -43,6 +43,6 @@ export class TSHandler extends DynamicHandler {
     await fs.mkdir(this.cacheDir)
     await cached.write(compiled)
 
-    return compiled
+    return cached
   }
 }
