@@ -14,14 +14,10 @@ export const syncMsgs = {
   DB_NEWER: 'I Database is newer than TS. Generating types...',
   TS_NEWER: 'I %yschema.ts is newer! Syncing to the database...%*',
   BACKUP_CREATED: 'I Created database backup: %y{file}%*',
-  NO_CONSTRAINTS:
-    'E Could not find %rDBInfo.constraints%* in schema.ts to run the reverse sync!',
-  COL_MISMATCH:
-    "W Table '%y{table}%*' needs rebuild because of column '%y{column}%*' mismatch:",
-  COL_MISMATCH_TS:
-    'W   - TS: type=%c{tsType}%*, nullable=%c{tsNullable}%*, default=%c{tsDefault}%*',
-  COL_MISMATCH_DB:
-    'W   - DB: type=%c{dbType}%*, nullable=%c{dbNullable}%*, default=%c{dbDefault}%*',
+  NO_CONSTRAINTS: 'E Could not find %rDBInfo.constraints%* in schema.ts to run the reverse sync!',
+  COL_MISMATCH: "W Table '%y{table}%*' needs rebuild because of column '%y{column}%*' mismatch:",
+  COL_MISMATCH_TS: 'W   - TS: type=%c{tsType}%*, nullable=%c{tsNullable}%*, default=%c{tsDefault}%*',
+  COL_MISMATCH_DB: 'W   - DB: type=%c{dbType}%*, nullable=%c{dbNullable}%*, default=%c{dbDefault}%*',
   DANGER_ZONE: 'W %rDANGER ZONE: Destructive or major changes detected!%*',
   DROP_TABLES: 'W Tables to drop: %r{tables}%*',
   RENAME_TABLES: 'I Tables to rename: %y{tables}%*',
@@ -35,23 +31,19 @@ export const syncMsgs = {
   REVIEW_WARNING: 'W %yThese changes may affect data. Review carefully.%*',
   SYNC_ABORTED: 'I %ySync aborted. Your data is safe!%*',
   EXEC_RENAME_TABLE: 'I Renaming table: %y{oldName}%* -> %y{newName}%*...',
-  EXEC_RENAME_COL:
-    'I Renaming column: %y{table}.{oldColumn}%* -> %y{newColumn}%*...',
+  EXEC_RENAME_COL: 'I Renaming column: %y{table}.{oldColumn}%* -> %y{newColumn}%*...',
   EXEC_DROP_TABLE: 'I Dropping %y{type}%*: %r{table}%*...',
   EXEC_DROP_COL: 'I Dropping column: %r{table}.{column}%*...',
   EXEC_ADD_COL: 'I Adding column: %g{table}.{column}%*...',
   EXEC_DROP_INDEX: 'I Dropping index: %r{idx}%*...',
-  EXEC_REBUILD:
-    'I Rebuilding table to apply schema modifications: %y{table}%*...',
+  EXEC_REBUILD: 'I Rebuilding table to apply schema modifications: %y{table}%*...',
   EXEC_SYNC_VIEW: 'D Syncing view: %y{view}%*...',
   EXEC_SYNC_CONS: 'D Syncing constraints for: %y{table}%*...',
   EXEC_ADD_INDEX: 'I Creating %y{type}%* index: %g{name}%*...',
   CATCH_UP_SUCCESS: 'I %gDatabase successfully caught up%*!',
   PROD_FORCE_REQUIRED: 'E %rProduction requires %y--force-sync%* to proceed.%*',
-  OVERRIDE_SCHEMA:
-    'I %yschema.ts contains _oldTable/_transform wrappers. Overriding file to match DB.%*',
-  FATAL_ERROR:
-    'E %rFATAL ERROR: Sync failed! All changes have been safely rolled back. Detail: {error}%*',
+  OVERRIDE_SCHEMA: 'I %yschema.ts contains _oldTable/_transform wrappers. Overriding file to match DB.%*',
+  FATAL_ERROR: 'E %rFATAL ERROR: Sync failed! All changes have been safely rolled back. Detail: {error}%*',
 } as const
 
 const logger = new Logger('db-sync')
@@ -71,7 +63,19 @@ export class SyncEngine {
     adapter: DBAdapter,
     constraints: SyncTypes.DBConstraints,
     genLocal: (c?: any) => Promise<void>,
+    schemaPath: string,
   ): Promise<boolean> {
+    const schemaExists = await Bun.file(schemaPath).exists()
+    if (!schemaExists) {
+      await genLocal(constraints)
+      const dbConstraints = await adapter.getConstraints()
+      if (Object.keys(dbConstraints).length === 0) {
+        console.log(
+          'Database is empty. Generated schema.ts with empty boilerplate.',
+        )
+      }
+      return true
+    }
     if (Object.keys(constraints).length) return false
 
     MESSAGES.NO_CONSTRAINTS()
@@ -92,35 +96,41 @@ export class SyncEngine {
 
   private static adjustSqlitePlan(adapter: DBAdapter, plan: any): void {
     if (adapter.driver !== 'sqlite' || !plan.columnsToRename.length) return
-
     for (const table of plan.tablesToRename) {
       plan.tablesToRebuild.add(table.oldName)
     }
     plan.columnsToRename = []
   }
 
-  private static evaluateChanges(plan: any, indexesToDrop: any, indexesToAdd: any) {
+  private static evaluateChanges(
+    plan: any,
+    indexesToDrop: any,
+    indexesToAdd: any,
+  ) {
     const isDangerous = Boolean(
       plan.tablesToDrop.length ||
-        plan.tablesToRename.length ||
-        plan.columnsToDrop.length ||
-        plan.columnsToRename.length ||
-        plan.tablesToRebuild.size,
+      plan.tablesToRename.length ||
+      plan.columnsToDrop.length ||
+      plan.columnsToRename.length ||
+      plan.tablesToRebuild.size,
     )
 
     const hasChanges = Boolean(
       isDangerous ||
-        plan.unmappedTsTables.size ||
-        plan.columnsToAdd.length ||
-        plan.viewsToUpdate.length ||
-        indexesToDrop.size ||
-        indexesToAdd.size,
+      plan.unmappedTsTables.size ||
+      plan.columnsToAdd.length ||
+      plan.viewsToUpdate.length ||
+      indexesToDrop.size ||
+      indexesToAdd.size,
     )
 
     return { isDangerous, hasChanges }
   }
 
-  private static handleSafetyChecks(isDangerous: boolean, argv: string[]): void {
+  private static handleSafetyChecks(
+    isDangerous: boolean,
+    argv: string[],
+  ): void {
     if (!isDangerous) return
 
     const isProd =
@@ -182,11 +192,19 @@ export class SyncEngine {
   ): Promise<void> {
     const genLocal = (c: any = {}) =>
       SchemaBuilder.generate(adapter, schemaPath, MESSAGES, c)
-
-    const isEmpty = await SyncEngine.checkEmptyConstraints(adapter, constraints, genLocal)
+    const isEmpty = await SyncEngine.checkEmptyConstraints(
+      adapter,
+      constraints,
+      genLocal,
+      schemaPath,
+    )
     if (isEmpty) return
-
-    const plan = await SyncHelper.buildSyncPlan(adapter, constraints, logger, MESSAGES)
+    const plan = await SyncHelper.buildSyncPlan(
+      adapter,
+      constraints,
+      logger,
+      MESSAGES,
+    )
     SyncEngine.adjustSqlitePlan(adapter, plan)
 
     const dbIndexes = await adapter.getIndexes()
@@ -212,11 +230,17 @@ export class SyncEngine {
       MESSAGES.GEN_TYPES()
       return await genLocal(plan.dbConstraintsForDiff)
     }
-
-    SyncHelper.logPlannedChanges(plan, indexesToDrop, indexesToAdd, isDangerous, MESSAGES)
-
+    SyncHelper.logPlannedChanges(
+      plan,
+      indexesToDrop,
+      indexesToAdd,
+      isDangerous,
+      MESSAGES,
+    )
     if (argv.includes('--dry-run')) {
-      logger.log('D Dry-run enabled: planned changes shown above, not applying.')
+      logger.log(
+        'D Dry-run enabled: planned changes shown above, not applying.',
+      )
       return
     }
 
