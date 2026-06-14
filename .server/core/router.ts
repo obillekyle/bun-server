@@ -19,29 +19,14 @@ export async function upgradeWebsocket(
   path: string,
 ): Promise<boolean | undefined> {
   try {
-    const wSockH = Bakery.handlers.websocket
-    const cached = await wSockH.getValidCache(path, req)
-
-    if (cached) {
-      const upgraded = await cached.handle(path, req)
-      return Boolean(upgraded)
-    }
-
-    for (const HandlerClass of wSockH.list()) {
-      const canHandle = await HandlerClass.canHandle(path, req)
-      if (canHandle) {
-        wSockH.routeCache.set(path, HandlerClass)
-        const upgraded = await HandlerClass.handle(path, req)
-        return Boolean(upgraded)
-      }
-    }
+    const upgrade = await Bakery.handlers.websocket.handle(path, req)
+    return Boolean(upgrade)
   } catch (err: any) {
     serveLog.UNHANDLED_ERR({
       error: `Error checking WebSocketHandler: ${errorMsg(err)}`,
     })
-
-    return false
   }
+  return false
 }
 
 export function handleRequest(
@@ -70,15 +55,8 @@ export async function handleRequest(req: Request) {
   const pluginResponse = await PluginHooks.onRequest(req)
   if (pluginResponse) return pluginResponse
 
-  const fetchH = Bakery.handlers.fetch
-  const cached = await fetchH.getValidCache(path, req)
-
-  if (cached) return await cached.handle(path, req)
-
-  for (const HandlerClass of fetchH.list()) {
-    const canHandle = await HandlerClass.canHandle(path, req)
-    if (canHandle) return await HandlerClass.handle(path, req)
-  }
+  const fetchH = Bakery.handlers.fetch.handle(path, req)
+  if (fetchH) return fetchH
 
   return new Response('Not Found', { status: 404 })
 }
@@ -168,15 +146,15 @@ export const serveWebSocket: Bun.WebSocketHandler<any> = {
 export function handleRequestError(
   path: string,
   req?: Request,
-  error?: Handler.Error.Data,
+  error?: any,
 ): Handler.Response
 export async function handleRequestError(
   path: string,
   req?: Request,
-  error?: Handler.Error.Data,
+  error?: any,
 ) {
   req ||= dummyRequest
-  error ||= ErrorHandler.DEFAULT_ERROR
+  error = ErrorHandler.extractErrorData(error)
 
   const pluginRes = await PluginHooks.onError(error, req)
   if (pluginRes) return pluginRes
@@ -192,17 +170,8 @@ export async function handleRequestError(
   }
 
   try {
-    const errorH = Bakery.handlers.error
-    const cached = await errorH.getValidCache(path, req, error)
-    if (cached) return await cached.handle(path, req, error)
-
-    for (const HandlerClass of Bakery.handlers.error.list()) {
-      const canHandle = await HandlerClass.canHandle(path, req, error)
-      if (canHandle) {
-        errorH.routeCache.set(path, HandlerClass)
-        return await HandlerClass.handle(path, req, error)
-      }
-    }
+    const errRes = await Bakery.handlers.error.handle(path, req, error)
+    if (errRes) return errRes
   } catch (err: any) {
     serveLog.UNHANDLED_ERR({
       error: `Error in ErrorHandler: ${errorMsg(err)}`,

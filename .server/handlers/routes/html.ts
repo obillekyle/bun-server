@@ -1,5 +1,5 @@
 import { Bakery } from '@server/core/bakery'
-import { ETag, injectIfHtml, response } from '@server/utils/http'
+import { injectIfHtml, response } from '@server/utils/http'
 import { DynamicHandler, type Handler } from '../core/$base'
 import { DynamicErrorHandler } from '../core/$error'
 
@@ -11,8 +11,8 @@ export class HTMLHandler extends DynamicHandler {
     }
   }
 
-  static async canHandle(path: string, req: Request) {
-    return path.endsWith('.html') || (await super.canHandle(path, req))
+  static canHandle(path: string, req: Request) {
+    return path.endsWith('.html') || super.canHandle(path, req)
   }
 
   static handle = sharedHandler

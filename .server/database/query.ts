@@ -4,13 +4,13 @@ import { Case } from '@server/utils'
 import { is, throws } from '@server/utils/common'
 import type { DBSchema } from '~/schema'
 import { buildSQL } from './build-sql'
-import { getActiveConnection, transactionStorage } from './connection'
+import { getActiveDb, txStorage } from './connection'
 import { Mutation } from './mutation'
 import { evalOperands } from './schema-util'
 
 export namespace DB {
   export function safeColumn(col: string): string {
-    const q = getActiveConnection().quoteChar
+    const q = getActiveDb().quoteChar
     const parts = col.split('.')
     return parts
       .map(part => {
@@ -196,7 +196,7 @@ export namespace DB {
     async *iterable(): AsyncIterable<P> {
       const { sql, params } = this.parse()
       let keyMap: MapOf<string> | null = null
-      for await (const row of getActiveConnection()
+      for await (const row of getActiveDb()
         .query(sql)
         .iterate(...(params as unknown[]))) {
         switch (true) {
@@ -224,7 +224,7 @@ export namespace DB {
 
     async array(): Promise<P[]> {
       const { sql, params } = this.parse()
-      const results = (await getActiveConnection()
+      const results = (await getActiveDb()
         .query(sql)
         .all(...(params as unknown[]))) as MapOf<unknown>[]
       return this.mapRowsOptimized(results)
@@ -232,7 +232,7 @@ export namespace DB {
 
     async column<C = unknown>(): Promise<C[]> {
       const { sql, params } = this.parse()
-      const rows = (await getActiveConnection()
+      const rows = (await getActiveDb()
         .query(sql)
         .values(...(params as unknown[]))) as unknown[][]
       return rows.map((row: unknown[]) => row[0]) as C[]
@@ -240,7 +240,7 @@ export namespace DB {
 
     async fetch(): Promise<P | undefined> {
       const { sql, params } = this.parse()
-      const result = await getActiveConnection()
+      const result = await getActiveDb()
         .query(sql)
         .get(...(params as unknown[]))
       if (!result) return undefined
@@ -491,7 +491,7 @@ export namespace DB {
       G extends ColumnRef<S, J>,
       F extends FilteredGroups<S, J, G> = FilteredGroups<S, J, G>,
     >(groups: G): QBGroupBy<S, J, F> {
-      const q = getActiveConnection().quoteChar
+      const q = getActiveDb().quoteChar
       const qbGroupBy = new (QBGroupBy as any)(this, '')
       qbGroupBy._groupBy = Object.entries(groups)
         .filter(([_, val]) => val !== undefined)
@@ -557,7 +557,7 @@ export namespace DB {
 
     async run(): Promise<boolean> {
       const { sql, params } = this.parse()
-      const result = await getActiveConnection()
+      const result = await getActiveDb()
         .query(sql)
         .get(...params)
       return !!result
@@ -925,10 +925,10 @@ export namespace DB {
   export const DELETE = Mutation.Delete
 
   export function transaction<T>(callback: () => Promise<T> | T): Promise<T> {
-    const activeConn = getActiveConnection()
+    const activeConn = getActiveDb()
     return activeConn.transaction(
       async (tx: import('./adapters').DBAdapter) => {
-        return await transactionStorage.run(tx, () => callback())
+        return await txStorage.run(tx, () => callback())
       },
     )
   }

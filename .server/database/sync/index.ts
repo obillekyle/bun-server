@@ -2,7 +2,7 @@ import '@server/core/init'
 
 import { Logger, messageLogger } from '@server/logger'
 import { Try } from '@server/utils'
-import { connection, initializeDatabaseConnection } from '../connection'
+import { connection, initDB } from '../connection'
 import type * as SyncTypes from './types'
 
 const logger = new Logger('db-sync')
@@ -18,7 +18,7 @@ export class SyncService {
   protected constructor() {}
 
   static async run() {
-    await initializeDatabaseConnection()
+    await initDB()
     const schemaPath = `${process.cwd()}/schema.ts`
     const schemaFile = Bun.file(schemaPath)
 

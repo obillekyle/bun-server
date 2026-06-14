@@ -21,13 +21,13 @@ export class HandlerError extends Error {
     req?: Request,
     data?: Partial<Handler.Error.Data>,
   ) {
-    data = {
+    const finalData = {
       ...HandlerError.getDefaultData(),
       ...data,
     }
 
-    super(message || data.errorText || 'Handler Error')
-    this.data = data as Handler.Error.Data
+    super(message || finalData.errorText || 'Handler Error')
+    this.data = finalData as Handler.Error.Data
     this.request = req
   }
 }
@@ -134,8 +134,7 @@ export class DynamicErrorHandler extends DynamicHandler {
     const pathArray = parsed.dir.split('/').filter(Boolean)
 
     for (let i = pathArray.length; i >= 0; i--) {
-      const dir = pathArray.slice(0, i).join('/')
-      const prefix = dir ? `/${dir}` : ''
+      const prefix = i ? `/${pathArray.slice(0, i).join('/')}` : ''
 
       const defsPage = `${prefix}/error`
       const codePage = `${prefix}/error-${errors.errorCode}`

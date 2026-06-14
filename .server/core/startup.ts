@@ -1,8 +1,8 @@
 import { networkInterfaces } from 'node:os'
 import { Bakery } from '@server/core/bakery'
-import { Logger } from '@server/logger'
+import { Logger, log } from '@server/logger'
 import { match } from '@server/utils/common'
-import { errorMsg, serveLog } from '../logger'
+import { serveLog } from '../logger'
 
 export async function setupServer(): Promise<void> {
   const {
@@ -45,13 +45,11 @@ export async function setupServer(): Promise<void> {
 
   await setupPlugins()
 
-  for (const HandlerClass of Bakery.handlers.fetch.list()) {
-    await HandlerClass.initRoutes()
-  }
-
-  for (const HandlerClass of Bakery.handlers.error.list()) {
-    await HandlerClass.initRoutes()
-  }
+  await Promise.all([
+    Bakery.handlers.fetch.initRoutes(),
+    Bakery.handlers.error.initRoutes(),
+    Bakery.handlers.websocket.initRoutes(),
+  ])
 }
 
 export async function runStartupBanner(): Promise<void> {
@@ -80,6 +78,8 @@ export async function runStartupBanner(): Promise<void> {
     [match]: () => serveLog.SERVER_URL({ type: 'Local ', host, port }),
   })
 
+  log({ by: 'serve', msg: '' })
+
   const { PluginHooks } = await import('./plugins')
   await PluginHooks.onStart(Bakery.server!)
   await Bakery.config.onStart()
@@ -93,42 +93,4 @@ export async function printStartupRoutes(): Promise<void> {
   for (const line of apiLines) routeLogger.log(line)
   for (const line of pageLines) routeLogger.log(line)
   routeLogger.log('')
-}
-
-export function registerShutdownHooks(): void {}
-
-export async function startup(): Promise<void> {
-  const isDev = import.meta.env.DEV || process.argv.includes('--dev')
-
-  serveLog.STARTING({ mode: isDev ? 'development' : 'production' })
-
-  try {
-    const { initConfig } = await import('./config')
-    const { initImportMap } = await import('../utils/http')
-    const { syncTSConfigPaths } = await import('./tsconfig-sync')
-    await initConfig()
-    await initImportMap()
-    await syncTSConfigPaths(Bakery.config.importMap)
-  } catch (error: any) {
-    console.error('Config init error stack:', error)
-    serveLog.UNHANDLED_ERR({ error: `Config init failed: ${errorMsg(error)}` })
-    process.exit(1)
-  }
-
-  try {
-    const { SyncService } = await import('@database/sync')
-    await SyncService.run()
-  } catch (error: any) {
-    serveLog.UNHANDLED_ERR({ error: `Startup failed: ${errorMsg(error)}` })
-    process.exit(1)
-  }
-
-  try {
-    await setupServer()
-  } catch (error: any) {
-    serveLog.UNHANDLED_ERR({ error: `Server setup failed: ${errorMsg(error)}` })
-    process.exit(1)
-  }
-
-  registerShutdownHooks()
 }

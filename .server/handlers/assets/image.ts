@@ -1,4 +1,4 @@
-import { Bakery, getConfig } from '@server/core'
+import { Bakery } from '@server/core'
 import { errorMsg } from '@server/logger'
 import { Math2 } from '@server/utils/common'
 import { FileSystem as fs } from '@server/utils/fs'
@@ -15,12 +15,26 @@ export class ImageHandler extends Handler {
     return IS_IMAGE_REGEX.test(path)
   }
 
-  private static async lookUpImage(path: string) {
-    if (this.cache.has(path)) {
-      const cached = this.cache.get(path) as Route.Info
-      if (await cached.file.exists()) return cached
-      this.cache.delete(path)
+  private static lookUpImage(path: string) {
+    if (!this.cache.has(path)) return
+
+    const cached = this.cache.get(path) as Route.Info
+    const parsed = this.path(path)
+
+    if (parsed) {
+      const sourceFile = Bun.file(parsed.source)
+      const sourceMtime = sourceFile.lastModified
+      const cachedMtime = cached.file.lastModified
+
+      if (sourceMtime && cachedMtime && sourceMtime > cachedMtime) {
+        this.cache.delete(path)
+        return
+      }
     }
+
+    if (fs.exists(cached.file)) return cached
+
+    this.cache.delete(path)
   }
 
   private static clampSize(size: number) {
@@ -88,9 +102,7 @@ export class ImageHandler extends Handler {
         const targetSize = Math.min(size, this.maxImageSize)
         const shortest = Math.min(w, h)
 
-        let scale = targetSize / shortest
-
-        if (scale > 1) scale = 1
+        const scale = Math.min(targetSize / shortest, 1)
 
         const targetW = Math.round(w * scale)
         const targetH = Math.round(h * scale)

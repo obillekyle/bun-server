@@ -179,6 +179,7 @@ class AnalyticsHandler extends Handler {
           file: Bun.file(''),
           params: [],
           path,
+          valid: true,
         },
         params: {},
       } as Handler.Route.Resolved

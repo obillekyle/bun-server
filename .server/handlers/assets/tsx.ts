@@ -1,10 +1,9 @@
 import { Bakery } from '@server/core/bakery'
 import { is, jsonResponse } from '@server/utils/common'
-import { response, injectIfHtml } from '@server/utils/http'
 import { fs } from '@server/utils/fs'
+import { injectIfHtml, response } from '@server/utils/http'
 import { DynamicHandler, type Handler } from '../core/$base'
 import { DynamicErrorHandler } from '../core/$error'
-import { requestStorage } from '@server/core/context'
 
 type TSXModule = {
   default: (
@@ -22,9 +21,6 @@ export class TSXHandler extends DynamicHandler {
   }
 
   static handle = sharedHandler
-  static async canHandle(path: string, req: Request) {
-    return path.endsWith('.tsx') || (await super.canHandle(path, req))
-  }
 }
 
 export class TSXErrorHandler extends DynamicErrorHandler {
@@ -34,10 +30,6 @@ export class TSXErrorHandler extends DynamicErrorHandler {
       dir: Bakery.serveRoot,
       include: ['**/error.tsx', '**/error-*.tsx'],
     }
-  }
-
-  static async canHandle(path: string, req: Request) {
-    return path.endsWith('.tsx') || (await super.canHandle(path, req))
   }
 
   static handle = sharedHandler
@@ -63,25 +55,20 @@ async function sharedHandler(
   const finalParams = Object.assign({}, params, errorData)
   const body = await this.params(req, finalParams)
 
-  const resData = await requestStorage.run({ req, body }, async () => {
-    const mod = (await import(modulePath).catch(() => null)) as TSXModule
-    if (!mod || mod.default === undefined) return null
-    return typeof mod.default === 'function'
-      ? await mod.default(req, body)
-      : mod.default
-  })
-
+  const resData = await this.executeModule(modulePath, req, body)
   if (resData === null) return response.error('Not Found')
-  const code = errorData?.errorCode || 200
 
+  const code = errorData?.errorCode || 200
   if (is.object(resData)) {
-    if (resData instanceof Response) return resData
-    return jsonResponse(code, 'Success', resData)
+    return resData instanceof Response
+      ? resData
+      : jsonResponse(code, 'Success', resData)
   }
 
   const html = await injectIfHtml(resData, params)
   if (html) return html
-  if (is.string(resData)) return response.text(resData)
 
-  return response.error('Not Found')
+  return is.string(resData)
+    ? response.text(resData)
+    : response.error('Not Found')
 }

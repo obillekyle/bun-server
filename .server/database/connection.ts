@@ -1,31 +1,34 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { createDatabaseConnection, type DBAdapter } from './adapters'
+import { createDbAdapter, type DBAdapter } from './adapters'
 
-let cachedConnection: any = null
-let connectionPromise: Promise<any> | null = null
+let dbCache: any = null
+let dbPromise: Promise<any> | null = null
 
-export function initializeDatabaseConnection(): Promise<DBAdapter> {
-  if (connectionPromise) return connectionPromise
-  connectionPromise = (async () => {
-    cachedConnection = await createDatabaseConnection()
-    return cachedConnection
+export function initDB(): Promise<DBAdapter> {
+  if (dbPromise) return dbPromise
+
+  dbPromise = (async () => {
+    dbCache = await createDbAdapter()
+    return dbCache
   })()
-  return connectionPromise
+
+  return dbPromise
 }
 
 function getConn() {
-  if (!cachedConnection) {
-    throw new Error(
-      "Database connection not initialized. Please call 'await initializeDatabaseConnection()' first.",
-    )
+  if (!dbCache) {
+    throw new Error("DB not initialized. Call 'await initDb()' first.")
   }
-  return cachedConnection
+  return dbCache
 }
 
 export const connection: DBAdapter = new Proxy({} as any, {
   get(target, prop, receiver) {
-    if (prop === 'then' || prop === 'inspect' || prop === 'prototype') {
-      return (target as any)[prop]
+    switch (prop) {
+      case 'then':
+      case 'inspect':
+      case 'prototype':
+        return (target as any)[prop]
     }
     return Reflect.get(getConn(), prop, receiver)
   },
@@ -43,8 +46,8 @@ export const connection: DBAdapter = new Proxy({} as any, {
   },
 })
 
-export const transactionStorage = new AsyncLocalStorage<any>()
+export const txStorage = new AsyncLocalStorage<any>()
 
-export function getActiveConnection() {
-  return transactionStorage.getStore() ?? connection
+export function getActiveDb() {
+  return txStorage.getStore() ?? connection
 }

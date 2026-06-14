@@ -2,11 +2,11 @@ import { watch } from 'node:fs/promises'
 import { relative, resolve } from 'node:path'
 import { initRoutes } from '@server/cache'
 import { Bakery } from '@server/core/bakery'
+import { CLI } from '@server/core/cli'
 import { Try } from '@server/utils'
 import { Glob } from '@server/utils/fs'
 import { compLog, serveLog } from '../logger'
 import { PromptTracker } from './prompt-tracker'
-import { Spawn } from './spawn'
 
 export function notifySockets(server: any, filename: string) {
   const serveRoot = Bakery.serveRoot || '.'
@@ -18,8 +18,8 @@ export function notifySockets(server: any, filename: string) {
 }
 
 export function spawnLoggerTerminal() {
-  const scriptArgs = `bun ./.server/client/log.ts ${process.pid}`
-  Spawn.open(scriptArgs)
+  const scriptArgs = `bun run .server log ${process.pid}`
+  CLI.openTerminal(scriptArgs)
 }
 
 function setupPingInterval(
@@ -144,10 +144,12 @@ export async function handleDevMaster(): Promise<never> {
       PromptTracker.deactivate(workerProc.pid)
     }
 
+    const isDetached = process.env.DETACHED === '1'
     workerProc = Bun.spawn(
-      ['bun', '--smol', '.server/worker.ts', '--dev', '--dev-worker'],
+      [process.execPath, '--smol', '.server/index.ts', '--dev', '--dev-worker'],
       {
-        stdio: ['inherit', 'inherit', 'inherit'],
+        stdio: [isDetached ? 'ignore' : 'inherit', 'inherit', 'inherit'],
+        windowsHide: isDetached,
         env: {
           ...process.env,
           DEV_WATCHER_ACTIVE: '1',

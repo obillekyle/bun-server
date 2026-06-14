@@ -1,5 +1,5 @@
 import { mkdir as fsMkdir } from 'node:fs/promises'
-import { resolve, relative as nodeRelative } from 'node:path'
+import { relative as nodeRelative, resolve } from 'node:path'
 import { parse as parsedPath } from 'node:path/posix'
 import { is, Try } from './common'
 
@@ -143,9 +143,8 @@ export namespace FileSystem {
 
   export function exists(path: string | Bun.BunFile): boolean {
     const file = typeof path === 'string' ? Bun.file(path) : path
-    return Boolean(
-      !file.lastModified || file.lastModified < Date.now() || file.size,
-    )
+    const lastMod = file.lastModified
+    return Boolean(!lastMod || lastMod < Date.now() || file.size)
   }
 
   export async function mkdir(path: string) {
@@ -170,6 +169,28 @@ export namespace FileSystem {
     for await (const entry of readdir(info)) {
       if (entry.stat.isFile()) yield entry
     }
+  }
+
+  export async function getOrCreateCachedFile(
+    cacheDir: string,
+    cacheName: string,
+    sourceMtime: number | null,
+    compiler: () => Promise<string | Uint8Array | null | undefined>,
+  ): Promise<Bun.BunFile | null> {
+    const cachePath = resolve(cacheDir, cacheName)
+    const cached = Bun.file(cachePath)
+    const cachedMtime = cached.lastModified
+
+    if (exists(cached) && (!sourceMtime || sourceMtime <= cachedMtime)) {
+      return cached
+    }
+
+    const content = await compiler()
+    if (content === null || content === undefined) return null
+
+    await mkdir(cacheDir)
+    await cached.write(content)
+    return cached
   }
 }
 

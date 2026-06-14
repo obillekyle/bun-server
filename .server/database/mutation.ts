@@ -1,7 +1,7 @@
 import { Case } from '@server/utils'
 import { throws } from '@server/utils/common'
 import type { DBInfo, DBOptionals, DBSchema } from '~/schema'
-import { getActiveConnection } from './connection'
+import { getActiveDb } from './connection'
 import { evalOperands } from './schema-util'
 
 export namespace Mutation {
@@ -34,7 +34,7 @@ export namespace Mutation {
       private params: any[],
     ) {}
     async run(): Promise<boolean> {
-      const result = await getActiveConnection()
+      const result = await getActiveDb()
         .query(this.sql)
         .get(...this.params)
       return !!result
@@ -66,7 +66,7 @@ export namespace Mutation {
     parse(): { sql: string; params: any[] } {
       if (this._records.length === 0) throws('Empty insert')
 
-      const q = getActiveConnection().quoteChar
+      const q = getActiveDb().quoteChar
       const keySet = new Set<string>()
       for (const record of this._records) {
         for (const key of Object.keys(record)) {
@@ -93,10 +93,7 @@ export namespace Mutation {
     }
 
     async run(): Promise<RunResult> {
-      return await getActiveConnection().executeInsert(
-        this._table,
-        this._records,
-      )
+      return await getActiveDb().executeInsert(this._table, this._records)
     }
     then<TR1 = RunResult, TR2 = never>(
       onf?: ((v: RunResult) => TR1 | PromiseLike<TR1>) | null,
@@ -138,7 +135,7 @@ export namespace Mutation {
     ) {}
 
     parse(): { sql: string; params: any[] } {
-      const q = getActiveConnection().quoteChar
+      const q = getActiveDb().quoteChar
       const params: any[] = []
       const setClauses = Object.keys(this._data)
         .map(key => {
@@ -157,7 +154,7 @@ export namespace Mutation {
     }
 
     exists(): MutationExistsExecutable {
-      const q = getActiveConnection().quoteChar
+      const q = getActiveDb().quoteChar
       const params: any[] = []
       const left = evalOperands(this._whereClause.left, params)
       const right = evalOperands(this._whereClause.right, params)
@@ -169,7 +166,7 @@ export namespace Mutation {
 
     async run(): Promise<RunResult> {
       const { sql, params } = this.parse()
-      return await getActiveConnection()
+      return await getActiveDb()
         .query(sql)
         .run(...params)
     }
@@ -198,7 +195,7 @@ export namespace Mutation {
     ) {}
 
     parse(): { sql: string; params: any[] } {
-      const q = getActiveConnection().quoteChar
+      const q = getActiveDb().quoteChar
       const params: any[] = []
       const left = evalOperands(this._whereClause.left, params)
       const right = evalOperands(this._whereClause.right, params)
@@ -209,7 +206,7 @@ export namespace Mutation {
     }
 
     exists(): MutationExistsExecutable {
-      const q = getActiveConnection().quoteChar
+      const q = getActiveDb().quoteChar
       const params: any[] = []
       const left = evalOperands(this._whereClause.left, params)
       const right = evalOperands(this._whereClause.right, params)
@@ -221,7 +218,7 @@ export namespace Mutation {
 
     async run(): Promise<RunResult> {
       const { sql, params } = this.parse()
-      return await getActiveConnection()
+      return await getActiveDb()
         .query(sql)
         .run(...params)
     }

@@ -1,5 +1,5 @@
-import { Bakery } from '@server/core/bakery'
 import { bundleModule } from '@server/compiler'
+import { Bakery } from '@server/core/bakery'
 import { toHash } from '@server/utils/common'
 import { fs } from '@server/utils/fs'
 import pkg from '~/package.json' with { type: 'json' }
@@ -32,20 +32,22 @@ export class NMHandler extends Handler {
   static async handle(path: string) {
     const nmPath = path.replace(/^\/_nm\//, 'node_modules/')
     const nodeModulesPath = fs.resolve(Bakery.root, nmPath)
+    const nmFile = Bun.file(nodeModulesPath)
+    const sourceMtime = fs.exists(nmFile) ? nmFile.lastModified : null
+
     const cacheId = toHash(nmPath)
+    const cacheName = `${cacheId}.js`
 
-    const cachePath = fs.resolve(this.cacheDir, `${cacheId}.js`)
-    const cached = Bun.file(cachePath)
+    const cached = await fs.getOrCreateCachedFile(
+      this.cacheDir,
+      cacheName,
+      sourceMtime,
+      async () => {
+        const module = await bundleModule(nodeModulesPath)
+        return module.success && module.content ? module.content : null
+      },
+    )
 
-    if (await cached.exists()) {
-      return cached
-    }
-
-    const module = await bundleModule(nodeModulesPath)
-    if (module.success && module.content) {
-      await fs.mkdir(this.cacheDir)
-      await cached.write(module.content)
-      return cached
-    }
+    return cached || undefined
   }
 }

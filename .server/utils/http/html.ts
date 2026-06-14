@@ -55,7 +55,7 @@ export function assembleHtml(content: string, params?: MapOf<string>) {
   const injects: string[] = []
   const scripts: string[] = [
     DOMTools.importMap(),
-    DOMTools.speculation(),
+    DOMTools.speculation(content),
     DOMTools.params(params || {}),
     DOMTools.script('/_client/utils.js', { module: true }),
   ]

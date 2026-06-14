@@ -1,5 +1,5 @@
 import { Case, is } from '@server/utils'
-import { getActiveConnection } from './connection'
+import { getActiveDb } from './connection'
 
 function processLimitAndExists(c: any, state: any) {
   if (c._isExistsNode) {
@@ -35,7 +35,10 @@ function processSortAndFilter(c: any, state: any) {
   }
 }
 
-function buildSelectColumns(selectMap: Record<string, any>, q: string): string[] {
+function buildSelectColumns(
+  selectMap: Record<string, any>,
+  q: string,
+): string[] {
   return Object.entries(selectMap).map(([alias, colObj]) => {
     const colObjRec = colObj as Record<string, any>
     const tbl = Object.keys(colObjRec)[0]!
@@ -125,7 +128,7 @@ function processTableAndJoins(c: any, state: any, q: string) {
 }
 
 export function buildSQL(node: unknown): { sql: string; params: unknown[] } {
-  const q = getActiveConnection().quoteChar
+  const q = getActiveDb().quoteChar
   const state = {
     qLimit: '',
     qOrder: '',

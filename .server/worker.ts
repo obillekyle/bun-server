@@ -1,6 +1,6 @@
 import { Bakery } from '@server/core/bakery'
-import { Try, is, any } from '@server/utils/common'
 import { log } from '@server/logger'
+import { deferredValue, is, Try } from '@server/utils/common'
 import './core/init'
 import { startCompileService } from './compiler'
 import {
@@ -10,75 +10,58 @@ import {
   serveWebSocket,
 } from './core/router'
 import { Session } from './core/session'
-import { printStartupRoutes, runStartupBanner, startup } from './core/startup'
+import {
+  printStartupRoutes,
+  runStartupBanner,
+  setupServer,
+} from './core/startup'
 import type { Handler } from './handlers'
 import { errorMsg, serveLog } from './logger'
 
 const isDevWorker = import.meta.env.WORKER
+const isTest = process.env.NODE_ENV === 'test' || Bun.env.NODE_ENV === 'test'
 
-await startup()
+try {
+  await setupServer()
+} catch (error: any) {
+  serveLog.UNHANDLED_ERR({ error: `Server setup failed: ${errorMsg(error)}` })
+  process.exit(1)
+}
 
 await printStartupRoutes()
 
-const { ErrorHandler: RuntimeErrorHandler } = await import('./handlers')
-
-const isTest = process.env.NODE_ENV === 'test' || Bun.env.NODE_ENV === 'test'
 Bakery.server = Bun.serve({
   port: isTest
     ? 0
-    : process.env.PORT
-      ? parseInt(process.env.PORT, 10)
-      : Bakery.config.port,
+    : parseInt(process.env.PORT || '0', 10) || Bakery.config.port,
   hostname: Bakery.config.host,
-
   maxRequestBodySize: Bakery.config.maxBodySize,
 
   async fetch(req) {
     const path = new URL(req.url).pathname
     req.startNs = Bun.nanoseconds()
-    Object.defineProperty(req, 'session', {
-      get() {
-        this._session ||= Session.from(this)
-        return this._session
-      },
-      set(val) {
-        this._session = val
-      },
-      configurable: true,
-      enumerable: true,
-    })
+    deferredValue(req, 'session', () => Session.from(req))
 
     const resp: Handler.Response | symbol = await Try.return(
       async function fetchHandler() {
-        const response = await handleRequest(req)
-        if (response instanceof Response) {
-          if (response.status >= 400) {
-            return await handleRequestError(
-              path,
-              req,
-              RuntimeErrorHandler.extractErrorData(response),
-            )
-          }
-        }
+        const res = await handleRequest(req)
 
-        if (is.object(response)) {
-          if ('status' in response && response.status >= 400) {
-            return await handleRequestError(
-              path,
-              req,
-              RuntimeErrorHandler.extractErrorData(response),
-            )
-          }
-        }
+        const isResError = res instanceof Response && res.status >= 400
+        const isObjError =
+          is.object(res) && 'status' in res && res.status >= 400
 
-        return response
+        switch (true) {
+          case isResError:
+          case isObjError:
+            return await handleRequestError(path, req, res)
+          default:
+            return res
+        }
       },
 
       async function errorHandler(error) {
         serveLog.UNHANDLED_ERR({ error: errorMsg(error) })
-        const errorData = RuntimeErrorHandler.extractErrorData(error)
-
-        return await handleRequestError(path, req, errorData)
+        return await handleRequestError(path, req, error)
       },
     )
 
@@ -89,7 +72,6 @@ Bakery.server = Bun.serve({
 
   async error(error: Error, req?: Request): Promise<any> {
     serveLog.UNHANDLED_ERR({ error: errorMsg(error) })
-
     return await handleRequestError('/', req)
   },
 })
@@ -123,6 +105,11 @@ async function handleShutdown(signal: string) {
 
   process.exit(0)
 }
+
+setTimeout(() => {
+  Bun.gc(true)
+  log({ level: 'info', msg: 'Initial garbage collection complete' })
+}, 3000)
 
 process.on('SIGINT', () => handleShutdown('SIGINT'))
 process.on('SIGTERM', () => handleShutdown('SIGTERM'))

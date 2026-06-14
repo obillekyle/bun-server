@@ -3,34 +3,6 @@ import { Bakery } from '@server/core/bakery'
 import { is } from '../common/misc'
 import { Try } from '../common/try'
 
-const specBlock = (eagerness: 'conservative' | 'moderate' | 'aggressive') => [
-  {
-    source: 'document',
-    where: {
-      and: [
-        { href_matches: '/*' },
-        {
-          not: {
-            or: [
-              { href_matches: '/*\\?*utm_*' },
-              { href_matches: '/*\\?*fbclid*' },
-              { href_matches: '/*\\.pdf' },
-              { href_matches: '/*\\.zip' },
-              { href_matches: '/*#*' },
-            ],
-          },
-        },
-      ],
-    },
-    eagerness,
-  },
-]
-
-const specString = JSON.stringify({
-  prefetch: specBlock('moderate'),
-  prerender: specBlock('conservative'),
-})
-
 type PackageJson = {
   name: string
   version: string
@@ -44,17 +16,22 @@ type PackageJson = {
 let depMap = ''
 
 function resolveDepModule(pkgData: PackageJson, baseMod: string): string {
-  if (is.string(pkgData.browser)) {
-    return pkgData.browser
+  switch (true) {
+    case is.string(pkgData.browser):
+      return pkgData.browser as string
+
+    case is.object(pkgData.browser): {
+      const cleanBase = baseMod.replace(/^\.\//, '')
+      const browserField = pkgData.browser as MapOf<string>
+      const lookupKeys = [baseMod, `./${cleanBase}`, cleanBase]
+      const matchedOverride = lookupKeys.find(key => browserField[key])
+
+      return matchedOverride ? browserField[matchedOverride] : baseMod
+    }
+
+    default:
+      return baseMod
   }
-  if (is.object(pkgData.browser)) {
-    const cleanBase = baseMod.replace(/^\.\//, '')
-    const browserField = pkgData.browser as MapOf<string>
-    const lookupKeys = [baseMod, `./${cleanBase}`, cleanBase]
-    const matchedOverride = lookupKeys.find(key => browserField[key])
-    return matchedOverride ? browserField[matchedOverride] : baseMod
-  }
-  return baseMod
 }
 
 export async function initImportMap() {
@@ -111,6 +88,7 @@ export async function initImportMap() {
 
 export namespace DOMTools {
   type ScriptOptions = Omit<InjectScript, 'src'>
+
   export function script(src: string | InjectScript, opts?: ScriptOptions) {
     const finalSrc = is.string(src) ? src : src.src
     opts = opts || (is.object(src) ? src : {})
@@ -128,19 +106,48 @@ export namespace DOMTools {
   }
 
   export function style(href: string) {
-    if (href.startsWith('http') || href.startsWith('//')) {
-      return `<link rel="stylesheet" href="${href}" />`
-    }
+    const isAbsoluteOrRoot =
+      href.startsWith('http') || href.startsWith('//') || href.startsWith('/')
 
-    if (href.startsWith('/')) {
-      return `<link rel="stylesheet" href="${href}" />`
-    }
-
-    const path = relative(Bakery.serveRoot, href)
-    return `<link rel="stylesheet" href="/${path}" />`
+    return isAbsoluteOrRoot
+      ? `<link rel="stylesheet" href="${href}" />`
+      : `<link rel="stylesheet" href="/${relative(Bakery.serveRoot, href)}" />`
   }
 
-  export function speculation() {
+  const EXCLUDED_TAGS = ['link', 'base', 'meta', 'script', 'style']
+  const RX_HREF = new RegExp(
+    `<(?!(?:${EXCLUDED_TAGS.join('|')})\\b)[a-z0-9-]+[^>]*?\\s+href=(["'])(.*?)\\1`,
+    'gi',
+  )
+
+  export function speculation(html: string) {
+    const urls = new Set<string>()
+
+    for (const match of html.matchAll(RX_HREF)) {
+      const url = match[2]?.trim()
+
+      if (!url || url.startsWith('#') || url.includes(':')) continue
+
+      const lower = url.toLowerCase()
+      if (
+        lower.includes('?utm_') ||
+        lower.includes('?fbclid') ||
+        lower.endsWith('.pdf') ||
+        lower.endsWith('.zip')
+      )
+        continue
+
+      urls.add(url)
+    }
+
+    if (urls.size === 0) return ''
+
+    const specList = Array.from(urls)
+    const specString = JSON.stringify({
+      prefetch: [{ source: 'list', urls: specList, eagerness: 'eager' }],
+      prerender: [{ source: 'list', urls: specList, eagerness: 'eager' }],
+    })
+
     return `<script type="speculationrules">${specString}</script>`
   }
 
@@ -163,12 +170,15 @@ export namespace DOMTools {
 
   async function checkBlobHtml(data: Blob): Promise<string> {
     const type = data.type || ''
-    const isMimeHtml = type.startsWith('text/html') || type.startsWith('application/xhtml+xml')
-    if (type && !isMimeHtml) {
-      return ''
-    }
+    const isMimeHtml =
+      type.startsWith('text/html') || type.startsWith('application/xhtml+xml')
+
+    if (type && !isMimeHtml) return ''
+
     const sample = isMimeHtml ? '' : await data.slice(0, 512).text()
-    const isHtml = isMimeHtml || (RX_IS_HTML.test(sample) && !RX_IS_SVG_XML.test(sample))
+    const isHtml =
+      isMimeHtml || (RX_IS_HTML.test(sample) && !RX_IS_SVG_XML.test(sample))
+
     return isHtml ? await data.text() : ''
   }
 
@@ -176,16 +186,17 @@ export namespace DOMTools {
     data: Response,
   ): Promise<{ html: string; init: ResponseInit }> {
     const contentType = data.headers.get('content-type') || ''
-    const isMimeHtml = contentType.includes('text/html') || contentType.includes('application/xhtml+xml')
+    const isMimeHtml =
+      contentType.includes('text/html') ||
+      contentType.includes('application/xhtml+xml')
 
-    if (contentType && !isMimeHtml) {
-      return { html: '', init: {} }
-    }
+    if (contentType && !isMimeHtml) return { html: '', init: {} }
 
     let isHtml = isMimeHtml
     if (!isHtml && data.body) {
       const cloned = data.clone()
       const reader = cloned.body?.getReader()
+
       if (reader) {
         const result = await reader.read()
         const sample = new TextDecoder().decode(result.value?.slice(0, 512))
@@ -196,39 +207,37 @@ export namespace DOMTools {
 
     if (!isHtml) return { html: '', init: {} }
 
-    const html = await data.text()
     const headers = new Headers(data.headers)
     headers.delete('content-length')
 
     return {
-      html,
-      init: {
-        status: data.status,
-        statusText: data.statusText,
-        headers,
-      },
+      html: await data.text(),
+      init: { status: data.status, statusText: data.statusText, headers },
     }
   }
 
   export async function isHTML(
     data: string | Response | Blob,
   ): Promise<HTMLContent> {
-    if (is.string(data)) {
-      const sample = data.slice(0, 512)
-      const isHtml = RX_IS_HTML.test(sample) && !RX_IS_SVG_XML.test(sample)
-      return { content: isHtml ? data : '', responseInit: {} }
-    }
+    switch (true) {
+      case is.string(data): {
+        const sample = (data as string).slice(0, 512)
+        const isHtml = RX_IS_HTML.test(sample) && !RX_IS_SVG_XML.test(sample)
+        return { content: isHtml ? (data as string) : '', responseInit: {} }
+      }
 
-    if (data instanceof Blob) {
-      const html = await checkBlobHtml(data)
-      return { content: html, responseInit: {} }
-    }
+      case data instanceof Blob: {
+        const html = await checkBlobHtml(data as Blob)
+        return { content: html, responseInit: {} }
+      }
 
-    if (data instanceof Response) {
-      const res = await checkResponseHtml(data)
-      return { content: res.html, responseInit: res.init }
-    }
+      case data instanceof Response: {
+        const res = await checkResponseHtml(data as Response)
+        return { content: res.html, responseInit: res.init }
+      }
 
-    return { content: '', responseInit: {} }
+      default:
+        return { content: '', responseInit: {} }
+    }
   }
 }

@@ -1,16 +1,20 @@
 #!/usr/bin/env bun
-import { log } from '@server/logger'
+import { CLI } from './core/cli'
 
 import './core/init'
-import { handleDevMaster } from './compiler/dev-service'
+
+await CLI.handleCLI()
 
 const isDev = import.meta.env.DEV
 const isDevWorker = import.meta.env.WORKER
-const isParentWatcher = isDev && !isDevWorker
 
-log({
-  by: 'process',
-  msg: `Starting server (PID: ${process.pid})...`,
-})
-
-isParentWatcher ? await handleDevMaster() : await import('./worker')
+switch (true) {
+  case !isDev:
+    await import('./prod')
+    break
+  case isDevWorker:
+    await import('./dev')
+    break
+  default:
+    await import('./watcher')
+}

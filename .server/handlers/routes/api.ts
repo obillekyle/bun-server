@@ -1,5 +1,4 @@
 import { Bakery } from '@server/core/bakery'
-import { requestStorage } from '@server/core/context'
 import { FileSystem } from '@server/utils/fs'
 import { response } from '@server/utils/http'
 import { DynamicHandler, type Handler, type Route } from '../core/$base'
@@ -39,36 +38,13 @@ export class ApiHandler extends DynamicHandler {
     const routeInfo = await this.resolveRoute(path)
     if (!routeInfo) return response.error('No API handler found')
 
-    const params = 'params' in routeInfo ? routeInfo.params : {}
+    const params = routeInfo.params
     const body = await this.params(req, params)
 
     const filePath = FileSystem.resolve(this.config.dir, routeInfo.info.path)
-    if (!FileSystem.exists(filePath)) {
-      return response.error('API handler file not found')
-    }
-    
-    const handler = await import(filePath).catch(() => null)
+    const result = await this.executeModule(filePath, req, body)
 
-    
-    if (!handler || handler.default === undefined) {
-      return response.error('Handler Not Found')
-    }
-
-    const result =
-      typeof handler.default === 'function'
-        ? await requestStorage.run({ req, body }, () =>
-            handler.default(req, body),
-          )
-        : handler.default
-
-    switch (true) {
-      case result instanceof Response:
-        return result
-      case typeof result === 'object':
-        return response.json(200, 'Success', result)
-      default:
-        return response.text(String(result))
-    }
+    return result ?? response.error('No response from handler')
   }
 }
 

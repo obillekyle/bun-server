@@ -1,7 +1,7 @@
 import { relative } from 'node:path/posix'
 import { LRUCache } from '@server/cache/lru'
 import { Bakery } from '@server/core/bakery'
-import { is, range } from '@server/utils/common'
+import { requestStorage } from '@server/core/context'
 import { fs, Glob } from '@server/utils/fs'
 import { processBody } from '@server/utils/http'
 
@@ -194,12 +194,24 @@ export class DynamicHandler extends Handler {
     return false
   }
 
+  static async executeModule(
+    file: fs.AbsolutePath,
+    req: Request,
+    body: any,
+  ): Promise<any> {
+    const mod = await import(file).catch(() => null)
+    if (mod?.default === undefined) return null
+    if (typeof mod.default !== 'function') return mod.default
+
+    return await requestStorage.run({ req, body }, () => mod.default(req, body))
+  }
+
   static bindParams(path: string, regex: RegExp, params: string[]) {
     const match = path.match(regex)
     if (!match) return null
 
     const boundParams: MapOf<string> = {}
-    for (const i of range(params.length)) {
+    for (let i = 0; i < params.length; i++) {
       boundParams[params[i]] = match[i + 1]
     }
     return boundParams as MapOf<string>
@@ -225,7 +237,6 @@ export class DynamicHandler extends Handler {
   static validateCachedRoute(path: string, route: Route.Resolved | null) {
     if (!route) return null
     if (fs.exists(route.info.file)) return route
-
     this.cache.delete(path)
     if (route.type === 'dynamic') {
       this.dynamicCache.delete(route.regex)
@@ -256,27 +267,9 @@ export class DynamicHandler extends Handler {
   }
 }
 
-type Populator<K, V> = () => MapOf<V> | Iterable<[K, V]>
-
 export class HandlerCache<K, V> extends LRUCache<K, V> {
-  constructor(cacheSize = 500, populator: Populator<K, V> = () => new Map()) {
+  constructor(cacheSize = 500) {
     super(cacheSize)
-
-    if (is.function(populator)) {
-      const entries = populator()
-
-      if (Symbol.iterator in entries) {
-        for (const [key, value] of entries) {
-          this.set(key, value)
-        }
-
-        return
-      }
-
-      for (const [key, value] of Object.entries(entries)) {
-        this.set(key as K, value)
-      }
-    }
   }
 }
 
@@ -290,7 +283,6 @@ function getDynamicRoute(path: string): Handler.Dynamic.Route | null {
 
   for (let i = 0; i < paths.length; i++) {
     const segment = paths[i]
-    RX_PARAM.lastIndex = 0
 
     if (segment.startsWith('[') && segment.endsWith(']')) {
       const paramName = segment.slice(1, -1)
@@ -388,7 +380,7 @@ export async function getSingleRoute(
   const parsed = fs.parse(path)
   const rootFolder = fs.resolve(folder)
   const targetPath = fs.resolve(rootFolder, parsed.dir, parsed.name)
-  const exts = ext.join(',').replace('.', '')
+  const exts = ext.join(',').replaceAll('.', '')
 
   const possibleGlob = Glob.from(`${targetPath}{/index,}.{${exts}}`)
 

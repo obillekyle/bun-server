@@ -1,4 +1,5 @@
-import { createElement, Fragment, Comment, html } from './jsx'
+import './overrides'
+import { Comment, createElement, Fragment, html } from './jsx'
 
 const isDevWorker = process.argv.includes('--dev-worker')
 const isDev = process.argv.includes('--dev') || isDevWorker
@@ -25,3 +26,7 @@ Object.assign(globalThis, {
   Comment,
   html,
 })
+
+process.on('SIGHUP', () => {})
+process.on('SIGBREAK', () => {})
+

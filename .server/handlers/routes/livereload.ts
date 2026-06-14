@@ -1,7 +1,5 @@
-import { log } from '@server/logger'
-import { any } from '@server/utils/common'
 import { connectedLoggers } from '@plugins/analytics/core'
-import { serveLog } from '@server/logger'
+import { log, serveLog } from '@server/logger'
 import { WebSocketHandler } from '../core/$websocket'
 
 export class LiveReloadHandler extends WebSocketHandler {

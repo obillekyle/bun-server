@@ -36,43 +36,36 @@ export class VirtualAssetHandler extends Handler {
 
   static async handleClientAsset(path: string): Promise<Route.Info | null> {
     const clientAssets: MapOf<string> = {
-      '/_client/utils.js': '.server/client/utils.ts',
-      '/_client/livereload.js': '.server/client/livereload.ts',
+      '/_client/utils.js': fs.resolve(Bakery.root, '.server/client/utils.ts'),
+      '/_client/livereload.js': fs.resolve(Bakery.root, '.server/client/livereload.ts'),
     }
 
-    for (const key in clientAssets) {
-      clientAssets[key] = fs.resolve(Bakery.root, clientAssets[key])
+    const masterPath = clientAssets[path]
+    if (!masterPath) return null
+
+    const masterFile = Bun.file(masterPath)
+    if (!fs.exists(masterFile)) return null
+
+    const parsed = fs.parse(masterPath)
+    const fileId = `client-${parsed.name}-${parsed.ext}`
+
+    const cachedFile = await fs.getOrCreateCachedFile(
+      this.cacheDir,
+      fileId,
+      masterFile.lastModified,
+      () => compile(masterPath).catch(() => null),
+    )
+    if (!cachedFile) return null
+
+    const routeInfo: Route.Info = {
+      file: cachedFile,
+      valid: true,
+      path: relative(fs.cwd, masterPath),
+      params: [],
     }
 
-    if (path in clientAssets) {
-      const masterPath = clientAssets[path]
-      const masterFile = Bun.file(masterPath)
-
-      if (!fs.exists(masterFile)) return null
-
-      const parsed = fs.parse(masterPath)
-      const fileId = `client-${parsed.name}-${parsed.ext}`
-
-      const routeInfo: Route.Info = {
-        file: masterFile,
-        valid: true,
-        path: relative(fs.cwd, masterPath),
-        params: [],
-      }
-
-      const content = await compile(masterPath).catch(() => '')
-      if (!content) return null
-
-      const cachePath = fs.resolve(this.cacheDir, fileId)
-      routeInfo.file = Bun.file(cachePath)
-      await routeInfo.file.write(content)
-
-      this.cache.set(path, routeInfo)
-
-      return routeInfo
-    }
-
-    return null
+    this.cache.set(path, routeInfo)
+    return routeInfo
   }
 
   static async handleVirtualAsset(path: string): Promise<Route.Info | null> {
@@ -83,24 +76,21 @@ export class VirtualAssetHandler extends Handler {
     const assetFile = Bun.file(resolvedPath)
     if (!fs.exists(assetFile)) return null
 
-    const cachePath = fs.resolve(this.cacheDir, id)
+    const cachedFile = await fs.getOrCreateCachedFile(
+      this.cacheDir,
+      id,
+      assetFile.lastModified,
+      () => compile(resolvedPath).catch(() => null),
+    )
+    if (!cachedFile) return null
 
     const routeInfo: Route.Info = {
       valid: true,
-      file: Bun.file(cachePath),
+      file: cachedFile,
       path: relative(fs.cwd, resolvedPath),
       params: [],
     }
 
-    if (assetFile.lastModified < routeInfo.file.lastModified) {
-      this.cache.set(path, routeInfo)
-      return routeInfo
-    }
-
-    const content = await compile(resolvedPath).catch(() => '')
-    if (!content) return null
-
-    await routeInfo.file.write(content)
     this.cache.set(path, routeInfo)
     return routeInfo
   }

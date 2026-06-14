@@ -1,6 +1,6 @@
 {
   "name": "bakery",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "A ridiculously fast, zero-config full-stack starter built on Bun.",
   "author": "obillekyle",
   "license": "CC0-1.0 & MIT",
@@ -10,9 +10,9 @@
     "bun": ">=1.0.0"
   },
   "scripts": {
-    "dev": "bun run .server --dev",
-    "serve": "bun run .server",
-    "db:sync": "bun run .server/database/sync",
+    "dev": "bun --smol run .server --dev",
+    "serve": "bun --smol run .server",
+    "db:sync": "bun --smol run .server/database/sync",
     "test": "bun test"
   },
   "dependencies": {},

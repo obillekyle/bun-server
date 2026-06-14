@@ -21,7 +21,7 @@ const defaultConfig: Required<AppConfig> = {
   plugins: [],
   onStart: NOOP,
   onError(e) {
-    log({ level: 'trace', msg: e.errorBody })
+    log({ level: 'warn', msg: e.errorBody })
   },
   onShutdown: NOOP,
   maxCacheSize: 500,

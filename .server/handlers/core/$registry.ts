@@ -1,11 +1,14 @@
 import { LRUCache } from '@server/cache/lru'
-import { Try } from '@server/utils/common'
 import type { Handler } from './$base'
 
-export class HandlerMap<T = typeof Handler> extends Map<any, number> {
-  public routeCache = new LRUCache<string, T>(5000)
+export class HandlerMap<T extends typeof Handler = typeof Handler> extends Map<
+  any,
+  number
+> {
+  public static routeCache = new LRUCache<string, typeof Handler>(5000)
 
   private cachedList: T[] | null = null
+  private id = Bun.randomUUIDv7()
 
   constructor(entries?: readonly (readonly [any, number])[] | null) {
     super()
@@ -37,11 +40,33 @@ export class HandlerMap<T = typeof Handler> extends Map<any, number> {
     return this.cachedList
   }
 
-  async getValidCache(path: string, ...params: any[]): Promise<T | null> {
-    const cached: any = this.routeCache.get(path)
-    if (!cached) return null
+  async resolve(path: string, ...params: any[]) {
+    const pathId = `${this.id}:${path}`
+    const cached: any = HandlerMap.routeCache.get(pathId)
 
-    const canHandle = await Try(() => cached!.canHandle(path, ...params))
-    return canHandle ? cached : null
+    if (cached) {
+      if (await cached.canHandle(path, ...params)) return cached
+      HandlerMap.routeCache.delete(pathId)
+    }
+
+    for (const handler of this.list() as any) {
+      if (handler === cached) continue
+      if (await handler.canHandle(path, ...params)) {
+        HandlerMap.routeCache.set(pathId, handler)
+        return handler as T
+      }
+    }
+
+    return null
+  }
+
+  initRoutes() {
+    return Promise.all(this.list().map(handler => handler.initRoutes()))
+  }
+
+  handle(path: string, ...params: any[]): Handler.Response
+  async handle(path: string, ...params: any[]) {
+    const handler: any = await this.resolve(path, ...params)
+    return handler ? handler.handle(path, ...params) : null
   }
 }
