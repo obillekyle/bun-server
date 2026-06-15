@@ -214,7 +214,7 @@ async function handleJsAsset() {
     const writtenFile = Bun.file(tmpPath)
     if (writtenFile.size > 0) {
       cachedDashboardJsPath = tmpPath
-      return response.type(writtenFile, 'text/javascript')
+      return writtenFile
     }
   }
 

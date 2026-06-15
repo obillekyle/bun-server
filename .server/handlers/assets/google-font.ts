@@ -24,13 +24,17 @@ export class GoogleFontHandler extends Handler {
         isRoot: false,
         fileName: '(google-font-css2)',
       },
+      '/_gf/gstatic/*': {
+        type: 'static',
+        isRoot: false,
+        fileName: '(google-font-binary)',
+      },
     } as MapOf<Route.Meta>
   }
 
   static async handle(path: string, req: Request) {
     const url = new URL(req.url)
 
-    // Handle static font binary files (e.g. woff2, woff, ttf)
     if (path.startsWith('/_gf/gstatic/')) {
       const gstaticPath = path.slice('/_gf/gstatic/'.length)
       const cachePath = fs.resolve(this.cacheDir, 'gstatic', gstaticPath)
@@ -41,7 +45,10 @@ export class GoogleFontHandler extends Handler {
         const res = await fetch(gfUrl)
 
         if (!res.ok) {
-          return response.error('Google Fonts Binary Request Failed', res.status)
+          return response.error(
+            'Google Fonts Binary Request Failed',
+            res.status,
+          )
         }
 
         const buffer = await res.arrayBuffer()
@@ -51,13 +58,7 @@ export class GoogleFontHandler extends Handler {
         cacheFile = Bun.file(cachePath)
       }
 
-      let contentType = 'application/octet-stream'
-      if (cachePath.endsWith('.woff2')) contentType = 'font/woff2'
-      else if (cachePath.endsWith('.woff')) contentType = 'font/woff'
-      else if (cachePath.endsWith('.ttf')) contentType = 'font/ttf'
-      else if (cachePath.endsWith('.otf')) contentType = 'font/otf'
-
-      return response.type(cacheFile, contentType)
+      return cacheFile
     }
 
     // Handle CSS stylesheet requests
@@ -90,7 +91,6 @@ export class GoogleFontHandler extends Handler {
       }
 
       let css = await res.text()
-      // Rewrite remote fonts.gstatic.com links to local proxy endpoints
       css = css.replace(/https?:\/\/fonts\.gstatic\.com/g, '/_gf/gstatic')
 
       await fs.mkdir(this.cacheDir)
@@ -98,6 +98,6 @@ export class GoogleFontHandler extends Handler {
       cacheFile = Bun.file(cachePath)
     }
 
-    return response.type(cacheFile, 'text/css; charset=utf-8')
+    return cacheFile
   }
 }
