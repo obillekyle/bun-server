@@ -100,10 +100,6 @@ export function assembleHtml(content: string, params?: MapOf<string>) {
   let html = content
 
   // Replace Google Fonts links with local /_gf/ proxy links
-  html = html.replace(
-    /https?:\/\/fonts\.(?:googleapis|google)\.com\/css2/g,
-    '/_gf/',
-  )
 
   html = RX_HEAD_TAG.test(html)
     ? html.replace(RX_HEAD_TAG, `$&${headInjects}`)
@@ -113,7 +109,11 @@ export function assembleHtml(content: string, params?: MapOf<string>) {
     ? html.replace(RX_BODY_END, `${bodyInjects}$&`)
     : html + bodyInjects
 
-  RX_CURLY_PARAMS.lastIndex = 0
+  html = html.replace(
+    /https?:\/\/fonts\.(?:googleapis|google)\.com\/css2/g,
+    '/_gf/',
+  )
+
   html = html.replace(RX_CURLY_PARAMS, (_, key, fallback) => {
     const val = params?.[key] ?? fallback?.trim()
     return val !== undefined ? escapeHtml(val) : `{{${key}}}`
