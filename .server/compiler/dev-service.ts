@@ -145,8 +145,20 @@ export async function handleDevMaster(): Promise<never> {
     }
 
     const isDetached = process.env.DETACHED === '1'
+    const inspectArgs = [
+      ...process.execArgv,
+      ...process.argv,
+    ].filter(arg => arg.startsWith('--inspect'))
+
     workerProc = Bun.spawn(
-      [process.execPath, '--smol', '.server/index.ts', '--dev', '--dev-worker'],
+      [
+        process.execPath,
+        '--smol',
+        ...inspectArgs,
+        '.server/index.ts',
+        '--dev',
+        '--dev-worker',
+      ],
       {
         stdio: [isDetached ? 'ignore' : 'inherit', 'inherit', 'inherit'],
         windowsHide: isDetached,

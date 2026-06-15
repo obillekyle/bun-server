@@ -19,7 +19,7 @@ export namespace Handler {
     }
 
     export type Meta = {
-      type: 'endpoint' | 'route' | 'proxy' | 'static'
+      type: 'endpoint' | 'route' | 'proxy' | 'static' | 'websocket'
       isRoot: boolean
       fileName: string
     }
@@ -284,7 +284,7 @@ function getDynamicRoute(path: string): Handler.Dynamic.Route | null {
   for (let i = 0; i < paths.length; i++) {
     const segment = paths[i]
 
-    if (segment.startsWith('[') && segment.endsWith(']')) {
+  if (segment.startsWith('[') && segment.endsWith(']')) {
       const paramName = segment.slice(1, -1)
       params.push(paramName)
       paths[i] = '([^/]+?)'

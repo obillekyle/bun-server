@@ -50,13 +50,18 @@ export function escapeHtml(str: string): string {
     .replace(/'/g, '&#039;')
 }
 
-export function assembleHtml(content: string, params?: MapOf<string>) {
+let cachedHeadInjects: string | null = null
+let cachedBodyInjects: string | null = null
+
+function getConfigInjects() {
+  if (cachedHeadInjects !== null && cachedBodyInjects !== null) {
+    return { head: cachedHeadInjects, body: cachedBodyInjects }
+  }
+
   const styles: string[] = []
   const injects: string[] = []
   const scripts: string[] = [
     DOMTools.importMap(),
-    DOMTools.speculation(content),
-    DOMTools.params(params || {}),
     DOMTools.script('/_client/utils.js', { module: true }),
   ]
 
@@ -75,10 +80,30 @@ export function assembleHtml(content: string, params?: MapOf<string>) {
     inBody ? injects.push(tag) : scripts.push(tag)
   }
 
-  const headInjects = styles.join('') + scripts.join('')
-  const bodyInjects = injects.join('')
+  cachedHeadInjects = styles.join('') + scripts.join('')
+  cachedBodyInjects = injects.join('')
+
+  return { head: cachedHeadInjects, body: cachedBodyInjects }
+}
+
+export function assembleHtml(content: string, params?: MapOf<string>) {
+  const configInjects = getConfigInjects()
+
+  const scripts: string[] = [
+    DOMTools.speculation(content),
+    DOMTools.params(params || {}),
+  ]
+
+  const headInjects = configInjects.head + scripts.join('')
+  const bodyInjects = configInjects.body
 
   let html = content
+
+  // Replace Google Fonts links with local /_gf/ proxy links
+  html = html.replace(
+    /https?:\/\/fonts\.(?:googleapis|google)\.com\/css2/g,
+    '/_gf/',
+  )
 
   html = RX_HEAD_TAG.test(html)
     ? html.replace(RX_HEAD_TAG, `$&${headInjects}`)

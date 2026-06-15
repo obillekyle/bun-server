@@ -21,6 +21,7 @@ export async function setupServer(): Promise<void> {
     HTMLHandler,
     MiddlewareHandler,
     ImageHandler,
+    GoogleFontHandler,
   } = await import('@server/handlers')
   const { setupPlugins } = await import('./plugins')
 
@@ -35,6 +36,7 @@ export async function setupServer(): Promise<void> {
   Bakery.handlers.fetch.set(MiddlewareHandler, 100)
   Bakery.handlers.fetch.set(ProxyHandler, 95)
   Bakery.handlers.fetch.set(VirtualAssetHandler, 90)
+  Bakery.handlers.fetch.set(GoogleFontHandler, 87)
   Bakery.handlers.fetch.set(ImageHandler, 85)
   Bakery.handlers.fetch.set(NMHandler, 80)
   Bakery.handlers.fetch.set(ApiHandler, 70)
@@ -88,9 +90,10 @@ export async function runStartupBanner(): Promise<void> {
 export async function printStartupRoutes(): Promise<void> {
   const routeLogger = new Logger('routes')
   const { printRoutesTree } = await import('../utils/routing')
-  const { apiLines, pageLines } = printRoutesTree()
+  const { apiLines, pageLines, wsLines } = printRoutesTree()
   routeLogger.log('')
   for (const line of apiLines) routeLogger.log(line)
   for (const line of pageLines) routeLogger.log(line)
+  for (const line of wsLines) routeLogger.log(line)
   routeLogger.log('')
 }

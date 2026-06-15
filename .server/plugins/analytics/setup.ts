@@ -301,6 +301,16 @@ export class AnalyticsWSHandler extends WebSocketHandler {
     return path === '/_analytics_ws'
   }
 
+  static routes() {
+    return {
+      '/_analytics_ws': {
+        type: 'websocket',
+        isRoot: false,
+        fileName: '_virtual',
+      },
+    }
+  }
+
   static open(ws: ServerWebSocket) {
     connectedAnalyticsClients.add(ws)
   }

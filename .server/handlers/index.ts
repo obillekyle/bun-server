@@ -1,3 +1,4 @@
+export * from './assets/google-font'
 export * from './assets/image'
 export * from './assets/nm'
 export * from './assets/static'

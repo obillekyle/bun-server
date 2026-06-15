@@ -19,6 +19,7 @@ export type AppRoutes = {
   api: AppRouteEntry[]
   pages: AppRouteEntry[]
   errors: AppErrorRoute[]
+  websockets: AppRouteEntry[]
 }
 
 interface TreeNode {
@@ -55,18 +56,43 @@ export namespace Routes {
     const pages: AppRouteEntry[] = []
 
     for (const { route, info } of uniqueRoutes) {
-      const target = info.type === 'endpoint' ? api : pages
-      target.push({ route, ...info })
+      switch (info.type) {
+        case 'endpoint':
+          api.push({ route, ...info })
+          break
+        case 'route':
+          pages.push({ route, ...info })
+          break
+      }
     }
 
     const sortedApi = api.sort((a, b) => a.route.localeCompare(b.route))
     const sortedPages = pages.sort((a, b) => a.route.localeCompare(b.route))
     const sortedErrors = loadErrorRoutes()
 
+    const websockets: AppRouteEntry[] = []
+    const wsHandlers = Bakery.handlers.websocket.list()
+    for (const HandlerClass of wsHandlers) {
+      const handlerRoutes = HandlerClass.routes()
+      for (const [path, info] of Object.entries(handlerRoutes as any) as [
+        string,
+        any,
+      ][]) {
+        websockets.push({
+          route: path,
+          fileName: info.fileName.replace(/\\/g, '/'),
+          isRoot: info.isRoot,
+          type: 'websocket',
+        })
+      }
+    }
+    const sortedWebsockets = websockets.sort((a, b) => a.route.localeCompare(b.route))
+
     const result: AppRoutes = {
       api: sortedApi,
       pages: sortedPages,
       errors: sortedErrors,
+      websockets: sortedWebsockets,
     }
     cachedAppRoutes = result
     return result
@@ -218,18 +244,21 @@ export namespace Routes {
   }
 
   export function printTree() {
-    const { api, pages, errors } = get()
+    const { api, pages, errors, websockets } = get()
 
     const pagesRoot = buildPagesTree(pages, errors)
     const apiRoot = buildApiTree(api)
+    const wsRoot = buildWsTree(websockets)
 
     collapseNode(pagesRoot)
     collapseNode(apiRoot)
+    collapseNode(wsRoot)
 
     const apiLines = renderApiRoot(apiRoot, api.length > 0)
     const pageLines = renderPageRoot(pagesRoot)
+    const wsLines = renderWsRoot(wsRoot, websockets.length > 0)
 
-    return { apiLines, pageLines }
+    return { apiLines, pageLines, wsLines }
   }
 }
 
@@ -394,6 +423,8 @@ function getNodeNameColor(childNode: TreeNode, isFolder: boolean): string {
       return '%y'
     case childNode.type === 'endpoint':
       return '%c'
+    case childNode.type === 'websocket':
+      return '%p'
     case childNode.fileName && /\.(ts|js)$/.test(childNode.fileName):
       return '%b'
     default:
@@ -574,4 +605,55 @@ function renderPageRoot(pagesRoot: TreeNode): string[] {
   }
 
   return pageLines
+}
+
+function buildWsTree(websockets: AppRouteEntry[]): TreeNode {
+  const wsRoot = createNode('/')
+  for (const item of websockets) {
+    const segments = item.route.split('/').filter(Boolean)
+    let current = wsRoot
+    for (const seg of segments) {
+      current = current.children.getOrInsertComputed(seg, () => createNode(seg))
+    }
+    current.fileName = item.fileName
+    current.isRoot = item.isRoot
+    current.type = item.type
+  }
+  return wsRoot
+}
+
+function renderWsRoot(wsRoot: TreeNode, hasWs: boolean): string[] {
+  const wsLines: string[] = []
+  if (!hasWs) return wsLines
+
+  wsLines.push('\x1b[1mWebsockets%0')
+  const items: {
+    name: string
+    isFolder?: boolean
+    render: (pfx: string, last: boolean) => string[]
+  }[] = []
+
+  for (const [_childName, childNode] of wsRoot.children.entries()) {
+    const isFolder =
+      childNode.children.size > 0 ||
+      childNode.errors.size > 0 ||
+      Boolean(childNode.isRoot)
+    items.push({
+      name: childNode.name,
+      isFolder,
+      render: (pfx, last) => renderNodeChild(childNode, pfx, last, isFolder),
+    })
+  }
+
+  items.sort((a, b) => {
+    if (a.isFolder && !b.isFolder) return -1
+    if (!a.isFolder && b.isFolder) return 1
+    return a.name.localeCompare(b.name)
+  })
+
+  for (let i = 0; i < items.length; i++) {
+    wsLines.push(...items[i].render('', i === items.length - 1))
+  }
+
+  return wsLines
 }

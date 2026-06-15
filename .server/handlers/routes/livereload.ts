@@ -12,6 +12,16 @@ export class LiveReloadHandler extends WebSocketHandler {
     return path === '/_livereload'
   }
 
+  static routes() {
+    return {
+      '/_livereload': {
+        type: 'websocket',
+        isRoot: false,
+        fileName: '_virtual',
+      },
+    }
+  }
+
   static upgrade() {}
 
   static open(ws: ServerWebSocket) {
