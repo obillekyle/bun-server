@@ -29,6 +29,38 @@ export class GoogleFontHandler extends Handler {
 
   static async handle(path: string, req: Request) {
     const url = new URL(req.url)
+
+    // Handle static font binary files (e.g. woff2, woff, ttf)
+    if (path.startsWith('/_gf/gstatic/')) {
+      const gstaticPath = path.slice('/_gf/gstatic/'.length)
+      const cachePath = fs.resolve(this.cacheDir, 'gstatic', gstaticPath)
+      let cacheFile = Bun.file(cachePath)
+
+      if (!fs.exists(cacheFile)) {
+        const gfUrl = `https://fonts.gstatic.com/${gstaticPath}${url.search}`
+        const res = await fetch(gfUrl)
+
+        if (!res.ok) {
+          return response.error('Google Fonts Binary Request Failed', res.status)
+        }
+
+        const buffer = await res.arrayBuffer()
+        const dir = fs.parse(cachePath).dir
+        await fs.mkdir(dir)
+        await Bun.write(cachePath, buffer)
+        cacheFile = Bun.file(cachePath)
+      }
+
+      let contentType = 'application/octet-stream'
+      if (cachePath.endsWith('.woff2')) contentType = 'font/woff2'
+      else if (cachePath.endsWith('.woff')) contentType = 'font/woff'
+      else if (cachePath.endsWith('.ttf')) contentType = 'font/ttf'
+      else if (cachePath.endsWith('.otf')) contentType = 'font/otf'
+
+      return response.type(cacheFile, contentType)
+    }
+
+    // Handle CSS stylesheet requests
     let gfPath = path.slice('/_gf'.length)
     if (gfPath.startsWith('/')) {
       gfPath = gfPath.slice(1)
@@ -57,7 +89,10 @@ export class GoogleFontHandler extends Handler {
         return response.error('Google Fonts API Request Failed', res.status)
       }
 
-      const css = await res.text()
+      let css = await res.text()
+      // Rewrite remote fonts.gstatic.com links to local proxy endpoints
+      css = css.replace(/https?:\/\/fonts\.gstatic\.com/g, '/_gf/gstatic')
+
       await fs.mkdir(this.cacheDir)
       await Bun.write(cachePath, css)
       cacheFile = Bun.file(cachePath)
