@@ -1,4 +1,3 @@
-import { log } from '@server/logger/logger'
 import { is } from './misc'
 
 type Wrapped<T, Args extends any[] = []> = T | ((...args: Args) => T)
@@ -14,11 +13,9 @@ function tryThrow<T>(
   error?: string | Error,
 ): Promise<T> {
   return Promise.try(callback).catch((err: any) => {
-    throw typeof error === 'string' ? new Error(error) : error || err
+    throw is.string(error) ? new Error(error) : error || err
   })
 }
-
-const errorMsg = (err: any) => err?.stack || err?.message || String(err)
 
 function tryReturn<T extends MixedPromise<any>, D extends MixedPromise<any>>(
   value: Wrapped<T>,
@@ -28,12 +25,6 @@ function tryReturn<T extends MixedPromise<any>, D extends MixedPromise<any>>(
     const unwrapped = is.function(value) ? (value as any)() : value
     return unwrapped
   } catch (error: any) {
-    log({
-      by: 'debug',
-      level: 'debug',
-      msg: `Try.return caught an error${errorMsg(error)}`,
-    })
-
     const unwrappedDefault = is.function(defaultValue)
       ? (defaultValue as any)(error)
       : defaultValue

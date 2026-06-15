@@ -36,24 +36,12 @@ export function* range(start: number, end?: number): IterableIterator<number> {
   }
 }
 
-export namespace Array2 {
-  export function range(n: number): IterableIterator<number>
-  export function range(start: number, end: number): IterableIterator<number>
-  export function* range(start: number, end?: number) {
-    if (end === undefined) {
-      end = start
-      start = 0
-    }
-    for (let i = start; i < end; i++) {
-      yield i
-    }
-  }
+const _range = range
+const _repeat = repeat
 
-  export function repeat(n: number): number[]
-  export function repeat<T>(n: number, fn: (i: number) => T): T[]
-  export function repeat<T>(n: number, fn?: (i: number) => T): unknown[] {
-    return Array.from({ length: n }, (_, k) => (fn ? fn(k) : k))
-  }
+export namespace Array2 {
+  export const range = _range
+  export const repeat = _repeat
 
   export function chunk<T>(array: T[], size: number): T[][] {
     const result: T[][] = []

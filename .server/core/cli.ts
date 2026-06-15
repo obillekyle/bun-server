@@ -1,6 +1,8 @@
-import { spawn, type ChildProcess } from 'node:child_process'
-import { openSync, closeSync, appendFileSync } from 'node:fs'
+/** biome-ignore-all lint: any */
+import { type ChildProcess, spawn } from 'node:child_process'
+import { appendFileSync, mkdirSync, rmdirSync, statSync } from 'node:fs'
 import { platform } from 'node:os'
+import { Try } from '@server/utils/common/try'
 import { fs } from '@server/utils/fs'
 import { serveLog } from '../logger'
 
@@ -9,20 +11,38 @@ interface ProcessInfo {
   logFile: string
   args: string[]
   startedAt: number
+  token?: string
 }
 
+const safeLog = (file: string, msg: string) =>
+  Try(() => appendFileSync(file, msg))
+
+const isAlive = (pid: number): boolean =>
+  Try(() => (process.kill(pid, 0), true)) ?? false
+
 function trySpawn(cmd: string[], errorMsg?: string): boolean {
-  try {
-    Bun.spawn(cmd).unref()
-    return true
-  } catch (err) {
-    if (errorMsg) serveLog.UNHANDLED_ERR({ error: `${errorMsg}: ${err}` })
-    return false
-  }
+  return Try.return(
+    () => (Bun.spawn(cmd).unref(), true),
+    err => {
+      errorMsg && serveLog.UNHANDLED_ERR({ error: `${errorMsg}: ${err}` })
+      return false
+    },
+  )
 }
 
 export class CLI {
   protected constructor() {}
+
+  // 📂 Centralized Paths
+  private static get dir() {
+    return `${fs.cwd}/.server/.data`
+  }
+  private static get procFile() {
+    return `${this.dir}/processes.json`
+  }
+  private static get lockDir() {
+    return `${this.dir}/processes.lock`
+  }
 
   static daemon(
     scriptPath: string,
@@ -41,40 +61,34 @@ export class CLI {
   }
 
   static openTerminal(scriptArgs: string): void {
-    const os = platform()
-    switch (os) {
+    switch (platform()) {
       case 'win32':
-        this.spawnWindows(scriptArgs)
-        break
+        return void this.spawnWindows(scriptArgs)
       case 'darwin':
-        this.spawnMac(scriptArgs)
-        break
+        return void this.spawnMac(scriptArgs)
       default:
-        this.spawnLinux(scriptArgs)
-        break
+        return void this.spawnLinux(scriptArgs)
     }
   }
 
-  private static spawnWindows(scriptArgs: string): void {
+  private static spawnWindows = (args: string) =>
     trySpawn(
-      ['cmd.exe', '/c', 'start', 'cmd.exe', '/c', scriptArgs],
-      'Failed to spawn logger terminal on Windows',
+      ['cmd.exe', '/c', 'start', 'cmd.exe', '/c', args],
+      'Failed on Windows',
     )
-  }
 
-  private static spawnMac(scriptArgs: string): void {
+  private static spawnMac = (args: string) =>
     trySpawn(
       [
         'osascript',
         '-e',
-        `tell application "Terminal" to do script "cd \\"${process.cwd()}\\" && ${scriptArgs}"`,
+        `tell application "Terminal" to do script "cd \\"${process.cwd()}\\" && ${args}"`,
       ],
-      'Failed to spawn logger terminal on macOS',
+      'Failed on macOS',
     )
-  }
 
   private static spawnLinux(scriptArgs: string): void {
-    const terminals = [
+    const terms = [
       ['x-terminal-emulator', '-e', scriptArgs],
       ['gnome-terminal', '--', 'sh', '-c', scriptArgs],
       ['konsole', '-e', scriptArgs],
@@ -84,159 +98,148 @@ export class CLI {
       ['xterm', '-e', scriptArgs],
     ]
 
-    const spawned = terminals.some(cmd => trySpawn(cmd))
-    if (!spawned) {
+    !terms.some(cmd => trySpawn(cmd)) &&
       serveLog.UNHANDLED_ERR({
-        error:
-          'Could not spawn client logger terminal. Make sure x-terminal-emulator, gnome-terminal, konsole, or xterm is installed.',
+        error: 'Could not spawn client logger terminal.',
       })
-    }
   }
 
-  private static getProcessesFile() {
-    return `${fs.cwd}/.server/.data/processes.json`
-  }
-
-  private static async ensureDataDir() {
-    await fs.mkdir(`${fs.cwd}/.server/.data`)
-  }
-
-  private static normPath(p: string): string {
-    return p.replace(/\\/g, '/').toLowerCase()
-  }
+  private static normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
 
   private static parsePid(target: string, exampleCmd: string): number {
     if (!target) {
       console.error(`Error: Please specify a PID. Example: ${exampleCmd}`)
-      process.exit(1)
+      return process.exit(1)
     }
+
     const pid = parseInt(target, 10)
-    if (Number.isNaN(pid)) {
-      console.error(`Error: Invalid PID "${target}"`)
-      process.exit(1)
+    return Number.isNaN(pid)
+      ? (console.error(`Error: Invalid PID "${target}"`), process.exit(1))
+      : pid
+  }
+
+  private static async runLocked<T>(fn: () => Promise<T>): Promise<T> {
+    let acquired = false
+
+    for (let i = 0; i < 200; i++) {
+      if (Try(() => (mkdirSync(this.lockDir), true))) {
+        acquired = true
+        break
+      }
+
+      const stats = Try(() => statSync(this.lockDir))
+      if (stats && Date.now() - stats.mtimeMs > 5000) {
+        Try(() => rmdirSync(this.lockDir))
+        continue
+      }
+      await new Promise(r => setTimeout(r, 10 + Math.floor(Math.random() * 15)))
     }
-    return pid
+
+    const [err, res] = await Try.catch(fn)
+    acquired && Try(() => rmdirSync(this.lockDir))
+
+    if (err) throw err
+    return res as T
   }
 
   private static async readProcesses(): Promise<ProcessInfo[]> {
-    const file = Bun.file(this.getProcessesFile())
+    const file = Bun.file(this.procFile)
     if (!(await file.exists())) return []
-    try {
-      const data = await file.json()
-      return Array.isArray(data) ? data : []
-    } catch {
-      return []
-    }
+
+    const [err, data] = await Try.catch(() => file.json())
+    return err || !Array.isArray(data) ? [] : data
   }
 
   private static async writeProcesses(procs: ProcessInfo[]) {
-    await this.ensureDataDir()
-    await Bun.write(this.getProcessesFile(), JSON.stringify(procs, null, 2))
+    await fs.mkdir(this.dir)
+    await Bun.write(this.procFile, JSON.stringify(procs, null, 2))
   }
 
-  private static async getActiveProcesses(): Promise<ProcessInfo[]> {
+  private static async getActiveProcessesInternal(): Promise<ProcessInfo[]> {
     const procs = await this.readProcesses()
-    const active: ProcessInfo[] = []
-    for (const proc of procs) {
-      try {
-        process.kill(proc.pid, 0)
-        active.push(proc)
-      } catch {}
-    }
-    if (active.length !== procs.length) {
-      await this.writeProcesses(active)
-    }
+    const active = procs.filter(p => isAlive(p.pid))
+    active.length !== procs.length && (await this.writeProcesses(active))
     return active
   }
 
+  private static getActiveProcesses = () =>
+    this.runLocked(() => this.getActiveProcessesInternal())
+
+  private static async addActiveProcess(proc: Omit<ProcessInfo, 'startedAt'>) {
+    await this.runLocked(async () => {
+      const active = await this.getActiveProcessesInternal()
+      if (
+        active.some(
+          p =>
+            p.pid === proc.pid ||
+            this.normPath(p.logFile) === this.normPath(proc.logFile),
+        )
+      )
+        return
+      active.push({ ...proc, startedAt: Date.now() })
+      await this.writeProcesses(active)
+    })
+  }
+
   private static tryKillProcess(pid: number): boolean {
-    try {
-      process.kill(pid, 'SIGTERM')
-      return true
-    } catch (e) {
-      console.error(`Failed to kill PID ${pid}:`, e)
-      return false
-    }
-  }
-
-  private static async killAll(active: ProcessInfo[]) {
-    if (active.length === 0) {
-      console.log('No active background processes found.')
-      return
-    }
-    await this.writeProcesses([])
-    for (const proc of active) {
-      console.log(`Killing background process with PID ${proc.pid}...`)
-      this.tryKillProcess(proc.pid)
-    }
-    console.log('All processes terminated.')
-  }
-
-  private static async killOne(pid: number, active: ProcessInfo[]) {
-    console.log(`Killing process with PID ${pid}...`)
-    const procInfo = active.find(p => p.pid === pid)
-    if (procInfo) {
-      await this.writeProcesses(active.filter(p => p.pid !== pid))
-    }
-    const success = this.tryKillProcess(pid)
-    if (!success) {
-      process.exit(1)
-    }
-    console.log(`Process ${pid} terminated.`)
+    return Try.return(
+      () => (process.kill(pid, 'SIGTERM'), true),
+      e => (console.error(`Failed to kill PID ${pid}:`, e), false),
+    )
   }
 
   private static async handleKill(target: string) {
     const active = await this.getActiveProcesses()
-    if (target === 'all') {
-      await this.killAll(active)
-      process.exit(0)
+    if (active.length === 0) {
+      console.log('No active background processes found.')
+      return process.exit(0)
     }
 
-    const pid = this.parsePid(target, 'bun run .server kill 12345 (or all)')
-    await this.killOne(pid, active)
+    if (target === 'all') {
+      await this.runLocked(async () => this.writeProcesses([]))
+      active.forEach(p => {
+        console.log(`Killing ${p.pid}...`)
+        this.tryKillProcess(p.pid)
+      })
+      console.log('All processes terminated.')
+      return process.exit(0)
+    }
+
+    const pid = this.parsePid(target, 'bun run .server kill 12345')
+    console.log(`Killing process ${pid}...`)
+
+    await this.runLocked(async () => {
+      const activeProcs = await this.getActiveProcessesInternal()
+      await this.writeProcesses(activeProcs.filter(p => p.pid !== pid))
+    })
+
+    !this.tryKillProcess(pid) && process.exit(1)
+
+    console.log(`Process ${pid} terminated.`)
     process.exit(0)
   }
 
-  private static async handleAttach(target: string) {
-    const pid = this.parsePid(target, 'bun run .server attach 12345')
-    const active = await this.getActiveProcesses()
-    const proc = active.find(p => p.pid === pid)
-    if (!proc) {
-      console.error(`Error: No active background process found with PID ${pid}`)
-      process.exit(1)
-    }
-
-    console.log(
-      `Attaching to process ${pid} logs (${proc.logFile}). Press Ctrl+C to detach.\n`,
-    )
-
-    const file = Bun.file(proc.logFile)
+  private static async streamLogs(logFile: string, pid: number) {
+    const file = Bun.file(logFile)
     let lastSize = 0
 
-    const printNewLogs = async () => {
-      if (await file.exists()) {
-        const currentSize = file.size
-        if (currentSize > lastSize) {
-          const stream = file.slice(lastSize, currentSize).stream()
-          const reader = stream.getReader()
-          const decoder = new TextDecoder()
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            process.stdout.write(decoder.decode(value))
-          }
-          lastSize = currentSize
-        }
-      }
+    const printLogs = async () => {
+      if (!(await file.exists())) return
+      const currentSize = file.size
+      if (currentSize <= lastSize) return
+
+      const stream = file.slice(lastSize, currentSize).stream()
+      const decoder = new TextDecoder()
+      for await (const chunk of stream)
+        process.stdout.write(decoder.decode(chunk))
+      lastSize = currentSize
     }
 
-    await printNewLogs()
-    const interval = setInterval(printNewLogs, 250)
+    await printLogs()
+    const interval = setInterval(printLogs, 250)
 
     const checkInterval = setInterval(() => {
-      try {
-        process.kill(pid, 0)
-      } catch {
+      if (!isAlive(pid)) {
         console.log(`\nProcess ${pid} has terminated.`)
         clearInterval(interval)
         clearInterval(checkInterval)
@@ -250,239 +253,231 @@ export class CLI {
       )
       process.exit(0)
     })
+  }
 
+  private static async handleAttach(target: string) {
+    const pid = this.parsePid(target, 'bun run .server attach 12345')
+    const active = await this.getActiveProcesses()
+    const proc = active.find(p => p.pid === pid)
+
+    if (!proc) {
+      console.error(`Error: No active background process found with PID ${pid}`)
+      return process.exit(1)
+    }
+
+    console.log(
+      `Attaching to process ${pid} logs (${proc.logFile}). Press Ctrl+C to detach.\n`,
+    )
+    await this.streamLogs(proc.logFile, pid)
     await new Promise(() => {})
   }
 
   private static async handleDetach() {
-    const childArgs = process.argv.slice(2).filter(arg => arg !== 'detach')
-    const timestamp = Date.now()
-    await this.ensureDataDir()
-    const logFilePath = `${fs.cwd}/.server/.data/process-${timestamp}.log`
+    const childArgs = process.argv.slice(2).filter(a => a !== 'detach')
+    await fs.mkdir(this.dir)
+    const logFilePath = `${this.dir}/process-${Date.now()}.log`
+    const token = Bun.randomUUIDv7()
 
     console.log(`Spawning background process...`)
-
     const proc = CLI.daemon('.server/index.ts', childArgs, fs.cwd, {
       ...process.env,
       DETACHED: '1',
       DETACHED_MONITOR: '1',
       LOG_FILE_PATH: logFilePath,
+      DETACHED_TOKEN: token,
     })
-
-    const newPid = proc.pid
-    if (!newPid) {
-      console.error('Error: Failed to spawn background process.')
-      process.exit(1)
-    }
     proc.unref()
 
-    // Wait a short moment to verify it started successfully
-    await new Promise(resolve => setTimeout(resolve, 800))
-
-    if (proc.exitCode !== null) {
-      console.error(
-        `Error: Background process exited immediately with code ${proc.exitCode}`,
+    for (let i = 0; i < 40; i++) {
+      await new Promise(r => setTimeout(r, 50))
+      const registered = (await this.getActiveProcesses()).find(
+        p => p.token === token,
       )
-      process.exit(1)
+
+      if (registered) {
+        console.log(`\nServer is running in background (detached).`)
+        console.log(`PID:      ${registered.pid}\nLog file: ${logFilePath}`)
+        console.log(
+          `\nTo view logs:   bun run .server attach ${registered.pid}`,
+        )
+        console.log(`To stop server: bun run .server kill ${registered.pid}`)
+        return process.exit(0)
+      }
     }
 
-    // Register PID temporarily; server will replace it with actual PID on boot
-    const active = await this.getActiveProcesses()
-    const exists = active.some(
-      p =>
-        p.pid === newPid ||
-        this.normPath(p.logFile) === this.normPath(logFilePath),
-    )
-    if (!exists) {
-      active.push({
-        pid: newPid,
-        logFile: logFilePath,
-        args: childArgs,
-        startedAt: timestamp,
-      })
-      await this.writeProcesses(active)
-    }
-
-    console.log(`\nServer is running in background (detached).`)
-    console.log(`PID:      ${newPid}`)
-    console.log(`Log file: ${logFilePath}`)
-    console.log(`\nTo view logs:   bun run .server attach ${newPid}`)
-    console.log(`To stop server: bun run .server kill ${newPid}`)
-    process.exit(0)
+    console.error('Error: Failed to spawn background process.')
+    process.exit(1)
   }
 
   static async registerBackgroundProcess() {
-    if (process.env.DETACHED !== '1' || !process.env.LOG_FILE_PATH) return
-
-    const logFilePath = process.env.LOG_FILE_PATH
-    const active = await this.getActiveProcesses()
-
-    if (active.some(p => p.pid === process.pid)) return
-
-    const existingIndex = active.findIndex(
-      p => this.normPath(p.logFile) === this.normPath(logFilePath),
-    )
-    if (existingIndex !== -1) {
-      active[existingIndex].pid = process.pid
-    } else {
-      active.push({
+    process.env.DETACHED === '1' &&
+      process.env.LOG_FILE_PATH &&
+      (await this.addActiveProcess({
         pid: process.pid,
-        logFile: logFilePath,
+        logFile: process.env.LOG_FILE_PATH,
         args: process.argv.slice(2),
-        startedAt: Date.now(),
-      })
+      }))
+  }
+
+  private static setupMonitorSignals(
+    logFile: string,
+    getChild: () => ChildProcess | null,
+  ) {
+    const killChild = () => Try(() => getChild()?.kill('SIGTERM'))
+
+    const handleFatal = (type: string, err?: any) => {
+      safeLog(
+        logFile,
+        `\n[Monitor] ${type}: ${err?.stack || err?.message || String(err || '')}\n`,
+      )
+      killChild()
+      process.exit(1)
     }
-    await this.writeProcesses(active)
+
+    process.on('SIGTERM', () =>
+      handleFatal('Received SIGTERM', 'Terminating child...'),
+    )
+    process.on('SIGINT', () =>
+      handleFatal('Received SIGINT', 'Terminating child...'),
+    )
+    process.on('uncaughtException', e => handleFatal('Uncaught Exception', e))
+    process.on('unhandledRejection', e => handleFatal('Unhandled Rejection', e))
+    process.on('SIGHUP', () =>
+      safeLog(logFile, `\n[Monitor] Received SIGHUP (ignored)\n`),
+    )
+    process.on('SIGBREAK', () =>
+      safeLog(logFile, `\n[Monitor] Received SIGBREAK (ignored)\n`),
+    )
   }
 
   private static async runMonitor(args: string[], logFile: string) {
-    try {
-      appendFileSync(logFile, `[Monitor] Starting monitor process (PID: ${process.pid})...\n`)
-    } catch (err: any) {
-      console.error('Failed to write startup log:', err)
-    }
+    safeLog(
+      logFile,
+      `[Monitor] Starting monitor process (PID: ${process.pid})...\n`,
+    )
 
-    process.on('uncaughtException', (err) => {
-      try {
-        appendFileSync(logFile, `\n[Monitor] Uncaught Exception: ${err?.stack || err?.message || String(err)}\n`)
-      } catch {}
-      process.exit(1)
-    })
+    process.env.DETACHED_TOKEN &&
+      (await this.addActiveProcess({
+        pid: process.pid,
+        logFile,
+        args,
+        token: process.env.DETACHED_TOKEN,
+      }))
 
-    process.on('unhandledRejection', (reason: any) => {
-      try {
-        appendFileSync(logFile, `\n[Monitor] Unhandled Rejection: ${reason?.stack || reason?.message || String(reason)}\n`)
-      } catch {}
-      process.exit(1)
-    })
-
-    process.on('SIGHUP', () => {
-      try { appendFileSync(logFile, `\n[Monitor] Received SIGHUP (ignored)\n`) } catch {}
-    })
-
-    process.on('SIGBREAK', () => {
-      try { appendFileSync(logFile, `\n[Monitor] Received SIGBREAK (ignored)\n`) } catch {}
-    })
+    let child: ChildProcess | null = null
+    this.setupMonitorSignals(logFile, () => child)
 
     let crashes: number[] = []
+    const childEnv = { ...process.env }
+    delete childEnv.DETACHED_MONITOR
 
     while (true) {
-      try {
-        const childEnv = { ...process.env }
-        delete childEnv.DETACHED_MONITOR
-
-        let child;
-        try {
-          child = spawn(process.execPath, ['--smol', '.server/index.ts', ...args], {
+      const childOrError = Try.return(
+        () =>
+          spawn(process.execPath, ['--smol', '.server/index.ts', ...args], {
             stdio: ['ignore', 'pipe', 'pipe'],
             cwd: fs.cwd,
             env: childEnv,
-            detached: true,
-          })
-        } catch (e: any) {
-          appendFileSync(logFile, `\n[Monitor] Failed to spawn child process: ${e?.message || String(e)}\n`)
-          break
-        }
+            detached: platform() !== 'win32',
+            windowsHide: true,
+          }),
+        e => e as Error,
+      )
 
-        const pipeToLog = async (stream: any) => {
-          try {
-            for await (const chunk of stream) {
-              appendFileSync(logFile, chunk)
-            }
-          } catch {}
-        }
-
-        const stdoutPromise = pipeToLog(child.stdout)
-        const stderrPromise = pipeToLog(child.stderr)
-
-        const { code, signal } = await new Promise<{ code: number | null; signal: string | null }>(resolve => {
-          child.on('exit', (code, signal) => {
-            resolve({ code, signal })
-          })
-        })
-
-        await Promise.all([stdoutPromise, stderrPromise])
-
-        const activeProcs = await this.getActiveProcesses()
-        const stillRegistered = activeProcs.some(
-          p => this.normPath(p.logFile) === this.normPath(logFile)
-        )
-
-        if (!stillRegistered) {
-          appendFileSync(logFile, `\n[Monitor] Process was removed from active processes list. Exiting monitor.\n`)
-          break
-        }
-
-        if (signal === 'SIGTERM' || signal === 'SIGINT') {
-          appendFileSync(logFile, `\n[Monitor] Process exited cleanly via signal ${signal}. Exiting monitor.\n`)
-          break
-        }
-
-        if (code === 0) {
-          appendFileSync(logFile, `\n[Monitor] Process exited cleanly with code 0. Exiting monitor.\n`)
-          break
-        }
-
-        // Crash!
-        const now = Date.now()
-        crashes.push(now)
-
-        const oneMinuteAgo = now - 60000
-        crashes = crashes.filter(t => t > oneMinuteAgo)
-
-        appendFileSync(
+      if (childOrError instanceof Error) {
+        safeLog(
           logFile,
-          `\n[Monitor] Process crashed (exit code: ${code}, signal: ${signal}). Crash count in last minute: ${crashes.length}/3.\n`
+          `\n[Monitor] Failed to spawn child process: ${childOrError.message}\n`,
         )
-
-        if (crashes.length >= 3) {
-          appendFileSync(
-            logFile,
-            `[Monitor] Process crashed ${crashes.length} times within 1 minute. Disabling autorestart. Exiting.\n`
-          )
-          break
-        }
-
-        appendFileSync(logFile, `[Monitor] Restarting in 1 second...\n`)
-        await new Promise(resolve => setTimeout(resolve, 1000))
-      } catch (err: any) {
-        appendFileSync(logFile, `\n[Monitor] Loop error: ${err?.stack || err?.message || String(err)}\n`)
         break
       }
+
+      child = childOrError
+
+      const pipe = async (stream: any) => {
+        for await (const chunk of stream) safeLog(logFile, chunk)
+      }
+
+      const { code, signal } = await new Promise<{
+        code: number | null
+        signal: string | null
+      }>(res => {
+        child!.on('exit', (c, s) => res({ code: c, signal: s }))
+      })
+
+      await Promise.all([pipe(child.stdout), pipe(child.stderr)])
+
+      if (
+        !(await this.getActiveProcesses()).some(
+          p => this.normPath(p.logFile) === this.normPath(logFile),
+        )
+      ) {
+        safeLog(
+          logFile,
+          `\n[Monitor] Process was removed from active processes list. Exiting monitor.\n`,
+        )
+        break
+      }
+
+      if (signal === 'SIGTERM' || signal === 'SIGINT' || code === 0) {
+        safeLog(
+          logFile,
+          `\n[Monitor] Process exited cleanly (${signal || `code ${code}`}). Exiting monitor.\n`,
+        )
+        break
+      }
+
+      crashes = [...crashes.filter(t => t > Date.now() - 60000), Date.now()]
+      safeLog(
+        logFile,
+        `\n[Monitor] Process crashed (code: ${code}, signal: ${signal}). Crash count in last minute: ${crashes.length}/3.\n`,
+      )
+
+      if (crashes.length >= 3) {
+        safeLog(
+          logFile,
+          `[Monitor] Process crashed 3 times within 1 minute. Disabling autorestart. Exiting.\n`,
+        )
+        break
+      }
+
+      safeLog(logFile, `[Monitor] Restarting in 1 second...\n`)
+      await new Promise(r => setTimeout(r, 1000))
     }
   }
 
   static async handleCLI() {
-    if (process.env.DETACHED_MONITOR === '1') {
-      const logFile = process.env.LOG_FILE_PATH
-      if (logFile) {
-        const childArgs = process.argv.slice(2).filter(arg => arg !== 'detach')
-        await this.runMonitor(childArgs, logFile)
-        process.exit(0)
+    const args = process.argv.slice(2)
+    const getArg = (cmd: string) => {
+      const idx = process.argv.indexOf(cmd)
+      return idx !== -1 ? process.argv[idx + 1] : null
+    }
+
+    if (process.env.DETACHED_MONITOR === '1' && process.env.LOG_FILE_PATH) {
+      await this.runMonitor(
+        args.filter(a => a !== 'detach'),
+        process.env.LOG_FILE_PATH,
+      )
+      return process.exit(0)
+    }
+
+    switch (true) {
+      case process.argv.includes('kill'):
+        return await this.handleKill(getArg('kill')!)
+
+      case process.argv.includes('attach'):
+        return await this.handleAttach(getArg('attach')!)
+
+      case process.argv.includes('detach'):
+        return await this.handleDetach()
+
+      case process.argv.includes('log'): {
+        const pidStr = getArg('log')!
+        const parentPid = parseInt(pidStr, 10)
+        const { startClientLogger } = await import('../client/log')
+        await startClientLogger(Number.isNaN(parentPid) ? undefined : parentPid)
+        return process.exit(0)
       }
-    }
-
-    const killIndex = process.argv.indexOf('kill')
-    if (killIndex !== -1) {
-      await this.handleKill(process.argv[killIndex + 1])
-    }
-
-    const attachIndex = process.argv.indexOf('attach')
-    if (attachIndex !== -1) {
-      await this.handleAttach(process.argv[attachIndex + 1])
-    }
-
-    const detachIndex = process.argv.indexOf('detach')
-    if (detachIndex !== -1) {
-      await this.handleDetach()
-    }
-
-    const logIndex = process.argv.indexOf('log')
-    if (logIndex !== -1) {
-      const parentPid = parseInt(process.argv[logIndex + 1], 10)
-      const { startClientLogger } = await import('../client/log')
-      await startClientLogger(Number.isNaN(parentPid) ? undefined : parentPid)
-      process.exit(0)
     }
 
     await this.registerBackgroundProcess()
