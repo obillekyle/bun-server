@@ -67,7 +67,7 @@ function getConfigInjects() {
     scripts.push('<script src="/_client/livereload.js" type="module"></script>')
   }
 
-  cachedHeadInjects = (Bakery.config.head || '') + scripts.join('')
+  cachedHeadInjects = scripts.join('') + (Bakery.config.head || '')
   cachedBodyInjects = Bakery.config.body || ''
 
   return { head: cachedHeadInjects, body: cachedBodyInjects }
@@ -77,7 +77,7 @@ export function assembleHtml(content: string, params?: MapOf<string>) {
   const configInjects = getConfigInjects()
   const paramsStr = DOMTools.params(params || {})
 
-  const headInjects = paramsStr + configInjects.head
+  const headInjects = configInjects.head + paramsStr
   const bodyInjects = configInjects.body
 
   let html = content
