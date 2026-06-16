@@ -186,6 +186,7 @@ export async function processResponse(
   req: Request,
 ): Promise<Response | undefined> {
   data = await data
+  let type = 'text/plain; charset=utf-8'
   if (data === WebSocketHandler.WS_UPGRADE) return
   if (data === null || data === undefined)
     return new Response(null, { status: 204 })
@@ -196,7 +197,7 @@ export async function processResponse(
     }
 
     if (data instanceof Blob) {
-      return ETag.sendFile(data as Bun.BunFile)
+      return ETag.sendFile(data as Bun.BunFile, req)
     }
 
     if (typeof data === 'string') {
@@ -206,16 +207,16 @@ export async function processResponse(
 
     if (data instanceof JsonResponseData) {
       data.time = getElapsed(req.startNs)
-      const json = data.toJson()
-      return response.type(json, 'application/json')
+      data = data.toJson()
+      type = 'application/json'
     }
 
     if (is.object(data)) {
-      const stringified = JSON.stringify(data)
-      return response.type(stringified, 'application/json')
+      data = JSON.stringify(data)
+      type = 'application/json'
     }
 
-    return new Response(String(data))
+    return ETag.sendText(String(data), req, type)
   })()
 
   const sess = Session.getCookie(req)

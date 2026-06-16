@@ -99,8 +99,6 @@ export function assembleHtml(content: string, params?: MapOf<string>) {
 
   let html = content
 
-  // Replace Google Fonts links with local /_gf/ proxy links
-
   html = RX_HEAD_TAG.test(html)
     ? html.replace(RX_HEAD_TAG, `$&${headInjects}`)
     : headInjects + html

@@ -1,3 +1,10 @@
+import { fs } from '../fs'
+
+const COMPRESSION_MAP = [
+  { encoding: 'zstd', ext: '.zst', compress: Bun.zstdCompressSync },
+  { encoding: 'gzip', ext: '.gz', compress: Bun.gzipSync },
+]
+
 export namespace ETag {
   function tag(response: Response): Response {
     ;(response as any).__notModified__ = true
@@ -55,36 +62,89 @@ export namespace ETag {
     return response
   }
 
+  function negotiateFile(file: Bun.BunFile, req?: Request) {
+    const fileName = file.name || 'file'
+
+    const matchedExt = COMPRESSION_MAP.find(c => fileName.endsWith(c.ext))?.ext
+
+    if (!req || !matchedExt) {
+      return { resolvedFile: file, fileHeaders: {} }
+    }
+
+    const basePath = fileName.slice(0, -matchedExt.length)
+    const ext = basePath.split('.').pop() || ''
+    const acceptEncoding = req.headers.get('Accept-Encoding') || ''
+
+    const fileHeaders: MapOf<any> = {
+      'Content-Type': fs.getMimeType(ext),
+      'Cache-Control': 'no-cache',
+    }
+
+    let resolvedFile = Bun.file(basePath)
+
+    if (fs.isCompressible(ext)) {
+      for (const { encoding, ext: compExt } of COMPRESSION_MAP) {
+        const compFile = Bun.file(`${basePath}${compExt}`)
+
+        if (acceptEncoding.includes(encoding) && fs.exists(compFile)) {
+          resolvedFile = compFile
+          fileHeaders['Content-Encoding'] = encoding
+          break
+        }
+      }
+    }
+
+    return { resolvedFile, fileHeaders }
+  }
   export function sendFile(file: Bun.BunFile, req?: Request): Response {
-    const etag = ETag.fromFile(file)
+    const { resolvedFile, fileHeaders } = negotiateFile(file, req)
+
+    const headers: MapOf<any> = fileHeaders
+
+    const etag = ETag.fromFile(resolvedFile)
+    headers.ETag = etag
 
     if (req) {
       const conditionalRes = ETag.check(req, etag)
       if (conditionalRes) return conditionalRes
     }
 
-    return new Response(file, {
-      headers: {
-        ETag: etag,
-        'Cache-Control': 'no-cache',
-      },
-    })
+    return new Response(resolvedFile, { headers })
   }
 
   export function sendText(text: string, req?: Request, type = ''): Response {
     type ||= 'text/plain; charset=utf-8'
-    const etag = ETag.fromText(text)
+
+    let payload: string | Uint8Array<ArrayBuffer> = text
+    let appliedExt = ''
+    const headers: MapOf<any> = {
+      'Content-Type': type,
+    }
+
+    if (req && text.length > 1024) {
+      const acceptEncoding = req.headers.get('Accept-Encoding') || ''
+
+      // Loop through and fire the first available compression function
+      for (const { encoding, ext, compress } of COMPRESSION_MAP) {
+        if (acceptEncoding.includes(encoding) && compress) {
+          payload = compress(text) as any
+          headers['Content-Encoding'] = encoding
+          appliedExt = ext
+          break
+        }
+      }
+    }
+
+    // Append the map's dynamic extension to the ETag if compressed (e.g., "hash.zst")
+    const baseEtag = ETag.fromText(text)
+    const finalEtag = appliedExt ? `${baseEtag}${appliedExt}` : baseEtag
+    headers.ETag = finalEtag
 
     if (req) {
-      const conditionalRes = ETag.check(req, etag)
+      const conditionalRes = ETag.check(req, finalEtag)
       if (conditionalRes) return conditionalRes
     }
 
-    return new Response(text, {
-      headers: {
-        'Content-Type': type,
-        ETag: etag,
-      },
-    })
+    return new Response(payload, { headers })
   }
 }

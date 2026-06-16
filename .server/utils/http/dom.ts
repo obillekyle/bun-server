@@ -168,16 +168,16 @@ export namespace DOMTools {
   const RX_IS_HTML = /<[a-z/][\s\S]*>/i
   const RX_IS_SVG_XML = /^\s*<(\?xml|svg|math)/i
 
+  function isHTMLType(contentType: string): boolean {
+    return (
+      contentType.startsWith('text/html') ||
+      contentType.startsWith('application/xhtml+xml')
+    )
+  }
+
   async function checkBlobHtml(data: Blob): Promise<string> {
     const type = data.type || ''
-    const isMimeHtml =
-      type.startsWith('text/html') || type.startsWith('application/xhtml+xml')
-
-    if (type && !isMimeHtml) return ''
-
-    const sample = isMimeHtml ? '' : await data.slice(0, 512).text()
-    const isHtml =
-      isMimeHtml || (RX_IS_HTML.test(sample) && !RX_IS_SVG_XML.test(sample))
+    const isHtml = isHTMLType(type)
 
     return isHtml ? await data.text() : ''
   }
@@ -186,24 +186,7 @@ export namespace DOMTools {
     data: Response,
   ): Promise<{ html: string; init: ResponseInit }> {
     const contentType = data.headers.get('content-type') || ''
-    const isMimeHtml =
-      contentType.includes('text/html') ||
-      contentType.includes('application/xhtml+xml')
-
-    if (contentType && !isMimeHtml) return { html: '', init: {} }
-
-    let isHtml = isMimeHtml
-    if (!isHtml && data.body) {
-      const cloned = data.clone()
-      const reader = cloned.body?.getReader()
-
-      if (reader) {
-        const result = await reader.read()
-        const sample = new TextDecoder().decode(result.value?.slice(0, 512))
-        isHtml = RX_IS_HTML.test(sample) && !RX_IS_SVG_XML.test(sample)
-        reader.releaseLock()
-      }
-    }
+    const isHtml = isHTMLType(contentType)
 
     if (!isHtml) return { html: '', init: {} }
 

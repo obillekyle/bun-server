@@ -1,4 +1,5 @@
 import { Bakery } from '@server/core/bakery'
+import { assembleHtml, fs, toHash } from '@server/utils'
 import { injectIfHtml, response } from '@server/utils/http'
 import { DynamicHandler, type Handler } from '../core/$base'
 import { DynamicErrorHandler } from '../core/$error'
@@ -30,6 +31,10 @@ export class HTMLErrorHandler extends DynamicErrorHandler {
   static handle = sharedHandler
 }
 
+function getCacheDir() {
+  return fs.resolve(Bakery.cacheDir, 'html')
+}
+
 async function sharedHandler(
   this: typeof DynamicHandler | typeof DynamicErrorHandler,
   path: string,
@@ -41,9 +46,28 @@ async function sharedHandler(
 
   if (!routeInfo) return response.error('Not Found')
 
+  const file = routeInfo.info.file
+
+  if (routeInfo.type === 'static' && !errorData) {
+    const cacheHash = toHash(routeInfo.info.path)
+    const cacheName = `${cacheHash}.html`
+
+    const cached = fs.getOrCreateCachedFile(
+      getCacheDir(),
+      cacheName,
+      file.lastModified,
+      async () => {
+        const content = await file.text()
+        return assembleHtml(content)
+      },
+    )
+
+    if (cached) return cached
+  }
+
   const params = await this.params(req, routeInfo.params)
   const content = await routeInfo.info.file.text()
-  const data = Object.assign({}, params, errorData)
+  const data = { ...params, ...errorData }
 
   if (import.meta.env.DEV) {
     data.__file = routeInfo.info.path

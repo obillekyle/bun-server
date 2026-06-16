@@ -30,15 +30,15 @@ export class TSHandler extends DynamicHandler {
     const file = routeInfo.info.file
     const id = toHash(routeInfo.info.path)
     const cacheName = `${id}.js`
+    const fileOrig = fs.resolve(this.config.dir, routeInfo.info.path)
 
     const cached = await fs.getOrCreateCachedFile(
       this.cacheDir,
       cacheName,
       file.lastModified,
-      () =>
-        compile(fs.resolve(this.config.dir, routeInfo.info.path)).catch(
-          () => null,
-        ),
+      async function compileTS() {
+        return await compile(fileOrig)
+      },
     )
 
     return cached || response.error('Compilation Failed')

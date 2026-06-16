@@ -41,8 +41,8 @@ export async function setupServer(): Promise<void> {
   Bakery.handlers.fetch.set(NMHandler, 80)
   Bakery.handlers.fetch.set(ApiHandler, 70)
   Bakery.handlers.fetch.set(TSXHandler, 60)
-  Bakery.handlers.fetch.set(TSHandler, 55)
-  Bakery.handlers.fetch.set(HTMLHandler, 50)
+  Bakery.handlers.fetch.set(HTMLHandler, 55)
+  Bakery.handlers.fetch.set(TSHandler, 50)
   Bakery.handlers.fetch.set(StaticHandler, 0)
 
   await setupPlugins()

@@ -13,6 +13,12 @@ function toArray<T>(val?: MixedArray<T>): T[] {
 function safeResolve(...paths: string[]) {
   return resolve(...paths).replace(/\\/g, '/')
 }
+// prettier-ignore
+const compressable = new Set([ 
+  'html', 'htm', 'xml', 'css', 'js', 'jsx', 'ts', 'tsx', 
+  'json', 'ttf', 'otf', 'txt', 'text', 'svg', 'md', 'wasm', 
+  'map', 'csv', 'yml', 'yaml', 'mdx',
+])
 
 export namespace Glob {
   export type Pattern = string | Bun.Glob
@@ -171,26 +177,66 @@ export namespace FileSystem {
     }
   }
 
+  export function isCompressible(ext: string): boolean {
+    const cleanExt = ext.toLowerCase().replace(/^\./, '')
+    const mimeType = getMimeType(cleanExt)
+    if (mimeType.startsWith('text/') || mimeType === 'application/json') {
+      return true
+    }
+
+    return compressable.has(cleanExt)
+  }
+
   export async function getOrCreateCachedFile(
     cacheDir: string,
     cacheName: string,
     sourceMtime: number | null,
-    compiler: () => Promise<string | Uint8Array | null | undefined>,
-  ): Promise<Bun.BunFile | null> {
-    const cachePath = resolve(cacheDir, cacheName)
-    const cached = Bun.file(cachePath)
-    const cachedMtime = cached.lastModified
+    compiler: () => Promise<
+      string | Uint8Array<ArrayBuffer> | null | undefined
+    >,
+  ) {
+    const ext = parse(cacheName).ext
+    const compressible = isCompressible(ext)
 
-    if (exists(cached) && (!sourceMtime || sourceMtime <= cachedMtime)) {
-      return cached
+    const rawPath = resolve(cacheDir, cacheName)
+    const gzPath = `${rawPath}.gz`
+    const zstPath = `${rawPath}.zst`
+
+    const rawFile = Bun.file(rawPath)
+    const gzFile = Bun.file(gzPath)
+    const zstFile = Bun.file(zstPath)
+
+    const targetFile = compressible ? zstFile : rawFile
+
+    if (
+      exists(targetFile) &&
+      (!compressible || (exists(rawFile) && exists(gzFile))) &&
+      (!sourceMtime || sourceMtime <= targetFile.lastModified)
+    ) {
+      return targetFile
     }
 
     const content = await compiler()
-    if (content === null || content === undefined) return null
+    if (content == null) return null
 
     await mkdir(cacheDir)
-    await cached.write(content)
-    return cached
+
+    await Promise.all([
+      rawFile.write(content),
+      ...(compressible
+        ? [
+            gzFile.write(Bun.gzipSync(content)),
+            zstFile.write(Bun.zstdCompressSync(content)),
+          ]
+        : []),
+    ])
+
+    return targetFile
+  }
+
+  export function getMimeType(ext: string): string {
+    const fileDummy = Bun.file(`dummy.${ext}`)
+    return fileDummy.type || 'application/octet-stream'
   }
 }
 
