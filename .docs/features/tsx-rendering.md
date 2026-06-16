@@ -11,7 +11,7 @@ When a request matches a `.tsx` file, the `TSXHandler`:
 1. Resolves the file from the route system (static or dynamic).
 2. Dynamically imports the file using Bun's native ESM loader.
 3. Calls the `default` export function with `(req, body)`.
-4. If the return value is a string, attempts HTML injection (scripts, styles, livereload client).
+4. If the return value is a string, attempts HTML injection (head, body, livereload client).
 5. Returns the final HTML response.
 
 ---
@@ -122,8 +122,8 @@ export default async function(req: Request, body: { slug: string }) {
 
 Bakery automatically injects the following into any HTML string that contains a closing `</head>` or `</body>` tag:
 
-- Your configured `styles` as `<link rel="stylesheet">` tags (into `<head>`)
-- Your configured `scripts` as `<script>` tags (into `<head>` or `<body>`)
+- Your configured `head` HTML string (into `<head>`)
+- Your configured `body` HTML string (into `<body>`)
 - `/_client/livereload.js` script (in development only)
 - The generated `<script type="importmap">` (if `importMap` is configured)
 

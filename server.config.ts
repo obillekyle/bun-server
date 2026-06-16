@@ -7,6 +7,6 @@ export default defineConfig({
   port: 3000,
   plugins: [dashboardPlugin(), analyticsPlugin()],
 
-  scripts: [],
-  styles: ['/styles/global.css'],
+  head: '<link rel="stylesheet" href="/styles/global.css">',
+  body: '',
 })

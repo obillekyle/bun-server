@@ -63,30 +63,22 @@ export default defineConfig({
   // ─────────────────────────────────────────────
 
   /**
-   * JavaScript files or <script> descriptors to inject into
-   * every HTML response. Paths are resolved relative to `root`.
-   *
-   * A plain string is treated as a `src` path with `defer: true`.
+   * HTML string to inject into the <head> of every HTML response.
    *
    * @example
-   * scripts: [
-   *   '/script/analytics.js',
-   *   { src: '/script/app.js', module: true, async: true },
-   * ]
-   * @default []
+   * head: '<link rel="stylesheet" href="/styles/global.css">',
+   * @default ''
    */
-  scripts: [
-    '/script/main.js',
-  ],
+  head: '',
 
   /**
-   * CSS stylesheet paths to inject into the <head> of every HTML
-   * response. Paths are resolved relative to `root`.
-   * @default []
+   * HTML string to inject before the closing </body> tag of every HTML response.
+   *
+   * @example
+   * body: '<script src="/script/analytics.js"></script>',
+   * @default ''
    */
-  styles: [
-    '/styles/global.css',
-  ],
+  body: '',
 
   // ─────────────────────────────────────────────
   // Reverse Proxy
@@ -304,8 +296,8 @@ type AppConfig = {
   importMap?: Record<string, string>
   backups?: number
   proxy?: Record<string, string>
-  scripts?: (string | InjectScript)[]
-  styles?: string[]
+  head?: string
+  body?: string
   onStart?(): MixedPromise<void>
   onRequest?(req: Request): MixedPromise<any>
   onError?(error: Handler.Error.Data): MixedPromise<any>
@@ -316,14 +308,6 @@ type AppConfig = {
   maxBodySize?: number
   maxCacheSize?: number
   blocked?: string[]
-}
-
-type InjectScript = {
-  src: string
-  module?: boolean
-  async?: boolean
-  defer?: boolean
-  inBody?: boolean   // inject before </body> instead of </head>
 }
 ```
 

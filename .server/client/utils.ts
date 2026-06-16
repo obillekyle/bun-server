@@ -330,3 +330,48 @@ Object.assign(globalThis, {
     },
   },
 })
+
+if (typeof document !== 'undefined') {
+  const initSpeculationRules = () => {
+    if (
+      typeof HTMLScriptElement !== 'undefined' &&
+      HTMLScriptElement.supports &&
+      HTMLScriptElement.supports('speculationrules')
+    ) {
+      const urls = new Set<string>()
+      const elements = document.querySelectorAll('[href]')
+      const ignoreTags = ['LINK', 'BASE']
+      for (const element of elements) {
+        if (ignoreTags.includes(element.tagName)) continue
+        const url = element.getAttribute('href')?.trim()
+        if (!url || url.startsWith('#') || url.includes(':')) continue
+        const lower = url.toLowerCase()
+        if (
+          lower.includes('?utm_') ||
+          lower.includes('?fbclid') ||
+          lower.endsWith('.pdf') ||
+          lower.endsWith('.zip')
+        )
+          continue
+        urls.add(url)
+      }
+      if (urls.size > 0) {
+        const existing = document.querySelector('script[type="speculationrules"]')
+        if (existing) existing.remove()
+
+        const specScript = document.createElement('script')
+        specScript.type = 'speculationrules'
+        specScript.textContent = JSON.stringify({
+          prefetch: [
+            { source: 'list', urls: Array.from(urls), eagerness: 'immediate' },
+          ],
+          prerender: [
+            { source: 'list', urls: Array.from(urls), eagerness: 'immediate' },
+          ],
+        })
+        document.head.appendChild(specScript)
+      }
+    }
+  }
+  setTimeout(initSpeculationRules, 0)
+}

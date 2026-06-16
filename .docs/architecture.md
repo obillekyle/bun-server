@@ -6,7 +6,7 @@ Understanding the layouts and core systems of the Bakery server framework.
 
 ## Workspace Layout
 *   `schema.ts` — The source of truth for your database schema, constraint types, and indexes.
-*   `server.config.ts` — Framework configuration (routing assets, styles, ports, and active plugins).
+*   `server.config.ts` — Framework configuration (routing assets, HTML injections, ports, and active plugins).
 *   `api/` — Backend API endpoints. All files mapping routes here are exposed as `/api/*`.
 *   `src/` — Client root containing pages, layouts, styles, and client scripts:
     *   `Layout.tsx` — Base page components.

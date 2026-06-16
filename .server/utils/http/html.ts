@@ -58,43 +58,26 @@ function getConfigInjects() {
     return { head: cachedHeadInjects, body: cachedBodyInjects }
   }
 
-  const styles: string[] = []
-  const injects: string[] = []
   const scripts: string[] = [
     DOMTools.importMap(),
-    DOMTools.script('/_client/utils.js', { module: true }),
+    '<script src="/_client/utils.js" type="module"></script>',
   ]
 
   if (import.meta.env.DEV) {
-    scripts.push(DOMTools.script('/_client/livereload.js', { module: true }))
+    scripts.push('<script src="/_client/livereload.js" type="module"></script>')
   }
 
-  for (const style of Bakery.config.styles) {
-    styles.push(DOMTools.style(style))
-  }
-
-  for (const script of Bakery.config.scripts) {
-    const tag = DOMTools.script(script)
-    const inBody = is.object(script) && script.inBody
-
-    inBody ? injects.push(tag) : scripts.push(tag)
-  }
-
-  cachedHeadInjects = styles.join('') + scripts.join('')
-  cachedBodyInjects = injects.join('')
+  cachedHeadInjects = (Bakery.config.head || '') + scripts.join('')
+  cachedBodyInjects = Bakery.config.body || ''
 
   return { head: cachedHeadInjects, body: cachedBodyInjects }
 }
 
 export function assembleHtml(content: string, params?: MapOf<string>) {
   const configInjects = getConfigInjects()
+  const paramsStr = DOMTools.params(params || {})
 
-  const scripts: string[] = [
-    DOMTools.speculation(content),
-    DOMTools.params(params || {}),
-  ]
-
-  const headInjects = configInjects.head + scripts.join('')
+  const headInjects = paramsStr + configInjects.head
   const bodyInjects = configInjects.body
 
   let html = content

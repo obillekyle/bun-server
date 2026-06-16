@@ -41,9 +41,9 @@ declare global {
 
     proxy?: Record<string, string>
 
-    scripts?: (string | InjectScript)[]
+    head?: string
 
-    styles?: string[]
+    body?: string
 
     onStart?(): MixedPromise<void>
 

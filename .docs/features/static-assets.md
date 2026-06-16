@@ -68,39 +68,27 @@ This means CSS changes are instant and **preserve scroll position and JavaScript
 
 ---
 
-## Script Injection
+## HTML Head & Body Injection
 
-Bakery automatically injects configured scripts and styles into every HTML response. Injection happens at the response level — the source HTML files do not need to reference these assets.
+Bakery automatically injects configured HTML strings (like stylesheets, scripts, or meta tags) into every HTML response. Injection happens at the response level — the source HTML files do not need to reference these assets.
 
 Configure globally in `server.config.ts`:
 
 ```typescript
 export default defineConfig({
-  scripts: [
-    '/script/analytics.js',
-    { src: '/script/app.js', module: true, defer: true },
-    { src: '/script/footer.js', inBody: true }, // inject before </body>
-  ],
-  styles: [
-    '/styles/global.css',
-    '/styles/theme.css',
-  ],
+  head: `
+    <link rel="stylesheet" href="/styles/global.css">
+    <link rel="stylesheet" href="/styles/theme.css">
+    <script src="/script/analytics.js" defer></script>
+  `,
+  body: `
+    <script src="/script/footer.js"></script>
+  `,
 })
 ```
 
-**`InjectScript` shape:**
-
-```typescript
-type InjectScript = {
-  src: string        // URL path to the script
-  module?: boolean   // adds type="module"
-  async?: boolean    // adds async attribute
-  defer?: boolean    // adds defer attribute
-  inBody?: boolean   // injects before </body> instead of in <head>
-}
-```
-
 In development, Bakery also injects `/_client/livereload.js` automatically.
+
 
 ---
 

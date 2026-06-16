@@ -16,8 +16,8 @@ const defaultConfig: Required<AppConfig> = {
   middleware: [],
   backups: DEFAULT_DB_BACKUPS,
   blocked: [],
-  scripts: [],
-  styles: [],
+  head: '',
+  body: '',
   plugins: [],
   onStart: NOOP,
   onError(e) {
