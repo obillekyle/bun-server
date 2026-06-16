@@ -304,7 +304,7 @@ export class AnalyticsWSHandler extends WebSocketHandler {
   static routes() {
     return {
       '/_analytics_ws': {
-        type: 'websocket',
+        type: 'websocket' as const,
         isRoot: false,
         fileName: '_virtual',
       },

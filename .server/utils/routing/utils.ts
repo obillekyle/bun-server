@@ -1,6 +1,12 @@
 import { Bakery } from '@server/core/bakery'
 import type { Route } from '@server/handlers'
-import type { ErrorRouteInfo } from './compiler'
+
+type ErrorRouteInfo = {
+  scope: string
+  code: string
+  filePath: string
+  type: 'tsx' | 'html'
+}
 
 export type AppRouteEntry = {
   route: string

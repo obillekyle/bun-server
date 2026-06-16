@@ -12,7 +12,9 @@ export class LiveReloadHandler extends WebSocketHandler {
     return path === '/_livereload'
   }
 
-  static routes() {
+  static routes(): any {
+    if (!import.meta.env.WORKER) return {}
+
     return {
       '/_livereload': {
         type: 'websocket',

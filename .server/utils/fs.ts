@@ -192,7 +192,7 @@ export namespace FileSystem {
     cacheName: string,
     sourceMtime: number | null,
     compiler: () => Promise<
-      string | Uint8Array<ArrayBuffer> | null | undefined
+      string | Uint8Array<ArrayBuffer> | ArrayBuffer | null | undefined
     >,
   ) {
     const ext = parse(cacheName).ext
@@ -231,7 +231,7 @@ export namespace FileSystem {
         : []),
     ])
 
-    return targetFile
+    return Bun.file(targetFile.name!)
   }
 
   export function getMimeType(ext: string): string {

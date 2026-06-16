@@ -50,8 +50,7 @@ export class GoogleFontHandler extends Handler {
 
           if (!res.ok) return null
 
-          const arrayBuffer = await res.arrayBuffer()
-          return new Uint8Array(arrayBuffer)
+          return res.arrayBuffer()
         },
       )
 

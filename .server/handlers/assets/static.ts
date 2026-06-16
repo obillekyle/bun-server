@@ -34,10 +34,7 @@ export class StaticHandler extends Handler {
         this.cacheDir,
         cacheName,
         file.lastModified,
-        async () => {
-          const content = await file.arrayBuffer()
-          return new Uint8Array(content)
-        },
+        () => file.arrayBuffer(),
       )
 
       if (cached) return cached
