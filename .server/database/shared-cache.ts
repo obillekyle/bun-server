@@ -1,10 +1,10 @@
 import { Database } from 'bun:sqlite'
-import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path/posix'
 import { Bakery } from '@server/core/bakery'
+import { fs } from '@server/utils'
 
 const dbFilePath = `${Bakery.dataDir}/shared-cache.db`
-await mkdir(dirname(dbFilePath), { recursive: true })
+if (!fs.exists(dbFilePath)) await fs.mkdir(dirname(dbFilePath))
 
 export const cacheDb = new Database(dbFilePath, { create: true })
 cacheDb.run('PRAGMA journal_mode = WAL;')

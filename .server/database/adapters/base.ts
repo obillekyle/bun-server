@@ -135,6 +135,10 @@ export abstract class DBAdapter {
   readonly DATE_NOW = DBAdapter.DATE_NOW
   readonly quoteChar: string = '`'
 
+  quote(name: string): string {
+    return quoteIdentifier(name, this.quoteChar)
+  }
+
   constructor(
     public readonly driver: DBDriver,
     public readonly filename?: string,

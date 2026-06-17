@@ -3,6 +3,11 @@ import { relative as nodeRelative, resolve } from 'node:path'
 import { parse as parsedPath } from 'node:path/posix'
 import { is, Try } from './common'
 
+export const COMPRESSION_MAP = [
+  { encoding: 'zstd', ext: '.zst', compress: Bun.zstdCompressSync },
+  { encoding: 'gzip', ext: '.gz', compress: Bun.gzipSync },
+]
+
 type MixedArray<T> = T | T[]
 
 function toArray<T>(val?: MixedArray<T>): T[] {
@@ -43,8 +48,8 @@ export namespace Glob {
     const globPattern = from(folder + ext)
 
     return {
-      async *scan() {
-        for await (const entry of globPattern.scan()) {
+      async *scan(options) {
+        for await (const entry of globPattern.scan(options)) {
           if (excludeGlob.match(entry)) continue
           yield entry
         }
@@ -54,8 +59,8 @@ export namespace Glob {
         return globPattern.match(path) && !excludeGlob.match(path)
       },
 
-      *scanSync() {
-        const entries = globPattern.scanSync()
+      *scanSync(options) {
+        const entries = globPattern.scanSync(options)
         for (const entry of entries) {
           if (excludeGlob.match(entry)) continue
           yield entry
@@ -95,11 +100,11 @@ export namespace Glob {
         for (const g of this.globs) if (g.match(path)) return true
         return false
       },
-      async *scan() {
-        for (const g of this.globs) yield* g.scan()
+      async *scan(options) {
+        for (const g of this.globs) yield* g.scan(options)
       },
-      *scanSync() {
-        for (const g of this.globs) yield* g.scanSync()
+      *scanSync(options) {
+        for (const g of this.globs) yield* g.scanSync(options)
       },
     }
   }
@@ -120,11 +125,9 @@ export namespace FileSystem {
   export type AbsolutePath = string & {}
   export type RelativePath = string & {}
   export type RequestPath = string & {}
-  export type ParsedPath = {
-    dir: string
-    name: string
-    ext: string
-  }
+  export type DirectoryPath = string & {}
+  export type FileName = string & {}
+  export type FileExtension = string & {}
 
   export async function* glob(pattern: Glob.Pattern, exclude?: Glob.Patterns) {
     const glob = Glob.from(pattern)
@@ -148,19 +151,20 @@ export namespace FileSystem {
   }
 
   export function exists(path: string | Bun.BunFile): boolean {
-    const file = typeof path === 'string' ? Bun.file(path) : path
+    path = typeof path === 'string' ? path : path.name || ''
+    const file = Bun.file(path)
     const lastMod = file.lastModified
-    return Boolean(!lastMod || lastMod < Date.now() || file.size)
+    return Boolean((lastMod && lastMod < Date.now()) || file.size > 0)
   }
 
   export async function mkdir(path: string) {
-    await fsMkdir(path, { recursive: true })
+    if (!exists(path)) await fsMkdir(path, { recursive: true })
   }
 
-  export async function* readdir(info?: Glob.PatternInfo) {
+  export async function* readdir(info?: Glob.PatternInfo, files = false) {
     info ||= { folder: cwd }
     const glob = Glob.pattern(info)
-    for await (let entry of glob.scan()) {
+    for await (let entry of glob.scan({ onlyFiles: files, absolute: true })) {
       entry = FileSystem.resolve(entry)
       const file = Bun.file(entry)
       yield {
@@ -187,6 +191,10 @@ export namespace FileSystem {
     return compressable.has(cleanExt)
   }
 
+  function validCache(file: Bun.BunFile, sourceMtime: number | null): boolean {
+    return exists(file) && (!sourceMtime || sourceMtime <= file.lastModified)
+  }
+
   export async function getOrCreateCachedFile(
     cacheDir: string,
     cacheName: string,
@@ -199,39 +207,35 @@ export namespace FileSystem {
     const compressible = isCompressible(ext)
 
     const rawPath = resolve(cacheDir, cacheName)
-    const gzPath = `${rawPath}.gz`
-    const zstPath = `${rawPath}.zst`
-
     const rawFile = Bun.file(rawPath)
-    const gzFile = Bun.file(gzPath)
-    const zstFile = Bun.file(zstPath)
 
-    const targetFile = compressible ? zstFile : rawFile
+    await mkdir(cacheDir)
 
-    if (
-      exists(targetFile) &&
-      (!compressible || (exists(rawFile) && exists(gzFile))) &&
-      (!sourceMtime || sourceMtime <= targetFile.lastModified)
-    ) {
-      return targetFile
+    if (compressible) {
+      for (const { ext: compExt } of COMPRESSION_MAP) {
+        const compFile = Bun.file(`${rawPath}${compExt}`)
+        if (validCache(compFile, sourceMtime)) return compFile
+      }
+
+      const content = await compiler()
+      if (content == null) return null
+
+      await Promise.all([
+        rawFile.write(content),
+        ...COMPRESSION_MAP.map(({ ext, compress }) => {
+          const compressedContent = compress(content) as any
+          const compressedFile = Bun.file(`${rawPath}${ext}`)
+          return compressedFile.write(compressedContent)
+        }),
+      ])
+
+      return Bun.file(rawPath + COMPRESSION_MAP[0].ext)
     }
 
     const content = await compiler()
     if (content == null) return null
-
-    await mkdir(cacheDir)
-
-    await Promise.all([
-      rawFile.write(content),
-      ...(compressible
-        ? [
-            gzFile.write(Bun.gzipSync(content)),
-            zstFile.write(Bun.zstdCompressSync(content)),
-          ]
-        : []),
-    ])
-
-    return Bun.file(targetFile.name!)
+    await rawFile.write(content)
+    return rawFile
   }
 
   export function getMimeType(ext: string): string {

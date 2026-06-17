@@ -65,7 +65,7 @@ export class SQLiteAdapter extends DBAdapter {
 
   readonly execute: DBExecutor = {
     all: async (sqlText: string, params: unknown[] = []) =>
-      (await this.sql.unsafe(sqlText, params)) as Record<string, unknown>[],
+      (await this.sql.unsafe(sqlText, params)) as MapOf<unknown>[],
     run: async (
       sqlText: string,
       params: unknown[] = [],
@@ -151,15 +151,14 @@ export class SQLiteAdapter extends DBAdapter {
     ).all()) as { name: string }[]
     const tablesWithDetails: TableDetails[] = []
     for (const t of res) {
-      const countRes = (await this.query(
-        `SELECT COUNT(*) as count FROM ${quoteIdentifier(t.name, this.quoteChar)}`,
-      ).get()) as { count: number }
-      const cols = (await this.query(
-        `PRAGMA table_info(${quoteIdentifier(t.name, this.quoteChar)})`,
-      ).all()) as any[]
-      const idxs = (await this.query(
-        `PRAGMA index_list(${quoteIdentifier(t.name, this.quoteChar)})`,
-      ).all()) as any[]
+      const tableName = this.quote(t.name)
+
+      const [countRes, cols, idxs] = (await Promise.all([
+        this.query(`SELECT COUNT(*) as count FROM ${tableName}`).get(),
+        this.query(`PRAGMA table_info(${tableName})`).all(),
+        this.query(`PRAGMA index_list(${tableName})`).all(),
+      ])) as [{ count: number }, any[], any[]]
+
       tablesWithDetails.push({
         name: t.name,
         rowCount: countRes?.count || 0,
@@ -182,65 +181,63 @@ export class SQLiteAdapter extends DBAdapter {
       pageSize: number
       sortBy?: string | null
       sortOrder?: string | null
-      filters?: Record<string, unknown>
+      filters?: MapOf<unknown>
     },
   ): Promise<TableDataResult> {
-    const cols = (await this.query(
-      `PRAGMA table_info(${quoteIdentifier(tableName, this.quoteChar)})`,
-    ).all()) as { name: string }[]
+    const tname = this.quote(tableName)
+    const cols = (await this.query(`PRAGMA table_info(${tname})`).all()) as {
+      name: string
+    }[]
     const { whereSql, orderSql, whereParams } = this.buildFilterSort(
       options,
       new Set(cols.map(c => c.name)),
     )
-    const countRes = (await this.query(
-      `SELECT COUNT(*) as count FROM ${quoteIdentifier(tableName, this.quoteChar)}${whereSql}`,
-    ).get(...whereParams)) as { count: number }
+
+    const { page, pageSize } = options
+
+    const [countRes, rows] = (await Promise.all([
+      this.query(`SELECT COUNT(*) as count FROM ${tname}${whereSql}`).get(
+        ...whereParams,
+      ),
+      this.query(
+        `SELECT rowid AS rowid, * FROM ${tname}${whereSql}${orderSql} LIMIT ? OFFSET ?`,
+      ).all(...whereParams, pageSize, (page - 1) * pageSize),
+    ])) as [{ count: number }, any[]]
+
     const totalRows = countRes?.count || 0
-    const rows = await this.query(
-      `SELECT rowid AS rowid, * FROM ${quoteIdentifier(tableName, this.quoteChar)}${whereSql}${orderSql} LIMIT ? OFFSET ?`,
-    ).all(
-      ...whereParams,
-      options.pageSize,
-      (options.page - 1) * options.pageSize,
-    )
     return {
       rows,
       totalRows,
-      page: options.page,
-      pageSize: options.pageSize,
-      totalPages: Math.ceil(totalRows / options.pageSize),
+      page: page,
+      pageSize: pageSize,
+      totalPages: Math.ceil(totalRows / pageSize),
     }
   }
 
-  async remove(tableName: string, rowid: unknown): Promise<RunResult> {
+  async remove(table: string, rowid: unknown): Promise<RunResult> {
     return await this.query(
-      `DELETE FROM ${quoteIdentifier(tableName, this.quoteChar)} WHERE rowid = ?`,
+      `DELETE FROM ${this.quote(table)} WHERE rowid = ?`,
     ).run(rowid)
   }
-  async truncate(tableName: string): Promise<RunResult> {
-    await this.query(
-      `DELETE FROM ${quoteIdentifier(tableName, this.quoteChar)}`,
-    ).run()
+  async truncate(table: string): Promise<RunResult> {
+    await this.query(`DELETE FROM ${this.quote(table)}`).run()
     return this.query(`VACUUM`).run()
   }
-  async insert(
-    tableName: string,
-    row: Record<string, unknown>,
-  ): Promise<RunResult> {
+  async insert(table: string, row: MapOf<unknown>): Promise<RunResult> {
     const keys = Object.keys(row),
       values = Object.values(row)
     return await this.query(
-      `INSERT INTO ${quoteIdentifier(tableName, this.quoteChar)} (${keys.map(k => quoteIdentifier(k, this.quoteChar)).join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`,
+      `INSERT INTO ${this.quote(table)} 
+      (${keys.map(k => this.quote(k)).join(', ')}) 
+      VALUES (${keys.map(() => '?').join(', ')})`,
     ).run(...values)
   }
-  async update(
-    tableName: string,
-    rowid: unknown,
-    row: Record<string, unknown>,
-  ): Promise<RunResult> {
+  async update(table: string, rowid: unknown, row: MapOf<unknown>) {
     const keys = Object.keys(row).filter(k => k !== 'rowid')
     return await this.query(
-      `UPDATE ${quoteIdentifier(tableName, this.quoteChar)} SET ${keys.map(k => `${quoteIdentifier(k, this.quoteChar)} = ?`).join(', ')} WHERE rowid = ?`,
+      `UPDATE ${this.quote(table)} 
+      SET ${keys.map(k => `${this.quote(k)} = ?`).join(', ')} 
+      WHERE rowid = ?`,
     ).run(...keys.map(k => row[k]), rowid)
   }
 

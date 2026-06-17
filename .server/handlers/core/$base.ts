@@ -1,5 +1,6 @@
 import { relative } from 'node:path/posix'
 import { LRUCache } from '@server/cache/lru'
+import { Try } from '@server/core'
 import { Bakery } from '@server/core/bakery'
 import { requestStorage } from '@server/core/context'
 import { fs, Glob } from '@server/utils/fs'
@@ -11,11 +12,11 @@ export namespace Handler {
   >
 
   export namespace Route {
-    export type Info = {
-      file: Bun.BunFile
-      path: fs.RelativePath
-      params: string[]
-      valid: boolean
+    export interface Info {
+      readonly file: Bun.BunFile
+      readonly path: fs.RelativePath
+      readonly params: string[]
+      readonly valid: boolean
     }
 
     export type Meta = {
@@ -73,20 +74,6 @@ function setPropVal<T>(obj: any, prop: string, cb: () => T): T {
   return val
 }
 
-async function* scanForFiles(ext: string[], folder?: string) {
-  folder ||= Bakery.serveRoot || process.cwd()
-  folder = fs.resolve(folder)
-
-  const globPattern = fs.readdir({
-    ext,
-    folder,
-    exclude: Bakery.config.blocked,
-  })
-  for await (const entry of globPattern) {
-    yield entry
-  }
-}
-
 export class Handler {
   static cacheSize = 100
   protected constructor() {}
@@ -113,6 +100,25 @@ export class Handler {
     }
 
     return routes
+  }
+
+  static Route = class Route {
+    private constructor() {}
+    static Info = class implements Handler.Route.Info {
+      constructor(
+        public readonly filePath: fs.AbsolutePath,
+        public readonly path: fs.RelativePath,
+        public readonly params: string[],
+      ) {}
+
+      get file() {
+        return Bun.file(this.filePath)
+      }
+
+      get valid() {
+        return fs.exists(this.filePath)
+      }
+    }
   }
 
   static initRoutes(): MixedPromise<void> {}
@@ -199,7 +205,7 @@ export class DynamicHandler extends Handler {
     req: Request,
     body: any,
   ): Promise<any> {
-    const mod = await import(file).catch(() => null)
+    const mod = await Try(import(file))
     if (mod?.default === undefined) return null
     if (typeof mod.default !== 'function') return mod.default
 
@@ -236,7 +242,7 @@ export class DynamicHandler extends Handler {
 
   static validateCachedRoute(path: string, route: Route.Resolved | null) {
     if (!route) return null
-    if (fs.exists(route.info.file)) return route
+    if (route.info.valid) return route
     this.cache.delete(path)
     if (route.type === 'dynamic') {
       this.dynamicCache.delete(route.regex)
@@ -284,7 +290,7 @@ function getDynamicRoute(path: string): Handler.Dynamic.Route | null {
   for (let i = 0; i < paths.length; i++) {
     const segment = paths[i]
 
-  if (segment.startsWith('[') && segment.endsWith(']')) {
+    if (segment.startsWith('[') && segment.endsWith(']')) {
       const paramName = segment.slice(1, -1)
       params.push(paramName)
       paths[i] = '([^/]+?)'
@@ -329,31 +335,38 @@ export async function getRoutes(
   const routes = new Map<string, Route.Info>()
   const dynamic = new Map<RegExp, Route.Info>()
 
-  const routeFiles = scanForFiles(ext, folder)
+  const routeFiles = Glob.pattern({
+    ext,
+    folder,
+    exclude: Bakery.config.blocked,
+  })
 
-  for await (const { path, file } of routeFiles) {
+  for await (const path of routeFiles.scan({
+    absolute: true,
+    onlyFiles: true,
+  })) {
+    const safePath = fs.resolve(path)
     if (!includes.match(path)) continue
 
-    const relativePath = relative(folder, path)
+    const relativePath = relative(folder, safePath)
+    console.log(`Found route file: ${relativePath}`)
     const [name, ext] = splitFileName(relativePath)
     const isDynamic = name.match(RX_DYNAMIC)
-    const routeInfo: Route.Info = {
-      file,
-      path: relativePath,
-      params: [],
-      valid: true,
-    }
 
     if (isDynamic) {
       const dynamicRoute = getDynamicRoute(name)
       if (!dynamicRoute) continue
 
-      routeInfo.params = dynamicRoute.params
-      dynamic.set(dynamicRoute.pattern, routeInfo)
+      dynamic.set(
+        dynamicRoute.pattern,
+        new Handler.Route.Info(path, relativePath, dynamicRoute.params),
+      )
       // continue <-- let dynamic routes also be cached statically for route listing
     }
 
     let urlPath = `/${name}`
+
+    const routeInfo = new Handler.Route.Info(path, relativePath, [])
 
     routes.set(urlPath, routeInfo)
     routes.set(`${urlPath}.${ext}`, routeInfo)
@@ -369,44 +382,42 @@ export async function getRoutes(
 }
 
 export async function getSingleRoute(
-  path: string,
+  path: fs.RequestPath,
   ext: string[],
   folder?: fs.AbsolutePath,
-) {
+): Promise<Route.Resolved | null> {
   folder ||= Bakery.serveRoot || fs.cwd
   folder = fs.resolve(folder)
   path = path.replace(/^\/+/, '')
 
   const parsed = fs.parse(path)
-  const rootFolder = fs.resolve(folder)
-  const targetPath = fs.resolve(rootFolder, parsed.dir, parsed.name)
+  const targetPath = fs.resolve(folder, parsed.dir, parsed.name)
   const exts = ext.join(',').replaceAll('.', '')
 
   const possibleGlob = Glob.from(`${targetPath}{/index,}.{${exts}}`)
 
-  try {
-    for await (const entry of possibleGlob.scan()) {
-      const file = Bun.file(entry)
-      const path = relative(folder, entry)
-      const isDynamic = entry.match(/\[[^/]+\]/)
+  for await (const entry of possibleGlob.scan()) {
+    const path = relative(folder, entry)
+    const isDynamic = entry.match(/\[[^/]+\]/)
 
-      if (isDynamic) {
-        const [name] = splitFileName(path)
-        const dynamicRoute = getDynamicRoute(name)
-        if (!dynamicRoute) continue
-
-        return {
-          type: 'dynamic',
-          info: { file, path, params: dynamicRoute.params },
-          regex: dynamicRoute.pattern,
-        } as Route.Resolved
-      }
+    if (isDynamic) {
+      const [name] = splitFileName(path)
+      const dynamicRoute = getDynamicRoute(name)
+      if (!dynamicRoute) continue
 
       return {
-        type: 'static',
-        info: { file, path: entry, params: {} },
-      } as Route.Resolved
+        type: 'dynamic',
+        info: new Handler.Route.Info(entry, path, dynamicRoute.params),
+        regex: dynamicRoute.pattern,
+        params: {},
+      }
     }
-  } catch {}
+
+    return {
+      type: 'static',
+      info: new Handler.Route.Info(entry, path, []),
+      params: {},
+    }
+  }
   return null
 }

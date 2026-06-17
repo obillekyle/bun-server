@@ -141,6 +141,7 @@ import {
   type ExtractTableTypes,
   type ExtractViews,
   index,
+  old,
   primary,
   unique,
   value,

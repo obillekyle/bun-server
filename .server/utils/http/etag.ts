@@ -1,9 +1,4 @@
-import { fs } from '../fs'
-
-const COMPRESSION_MAP = [
-  { encoding: 'zstd', ext: '.zst', compress: Bun.zstdCompressSync },
-  { encoding: 'gzip', ext: '.gz', compress: Bun.gzipSync },
-]
+import { COMPRESSION_MAP, fs } from '../fs'
 
 export namespace ETag {
   function tag(response: Response): Response {
@@ -124,7 +119,6 @@ export namespace ETag {
     if (req && text.length > 1024) {
       const acceptEncoding = req.headers.get('Accept-Encoding') || ''
 
-      // Loop through and fire the first available compression function
       for (const { encoding, ext, compress } of COMPRESSION_MAP) {
         if (acceptEncoding.includes(encoding) && compress) {
           payload = compress(text) as any
@@ -135,7 +129,6 @@ export namespace ETag {
       }
     }
 
-    // Append the map's dynamic extension to the ETag if compressed (e.g., "hash.zst")
     const baseEtag = ETag.fromText(text)
     const finalEtag = appliedExt ? `${baseEtag}${appliedExt}` : baseEtag
     headers.ETag = finalEtag
