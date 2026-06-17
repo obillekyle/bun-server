@@ -19,7 +19,6 @@ import type { Handler } from './handlers'
 import { errorMsg, serveLog } from './logger'
 
 const isDevWorker = import.meta.env.WORKER
-const isTest = process.env.NODE_ENV === 'test' || Bun.env.NODE_ENV === 'test'
 
 try {
   await setupServer()
@@ -31,16 +30,14 @@ try {
 await printStartupRoutes()
 
 Bakery.server = Bun.serve({
-  port: isTest
-    ? 0
-    : parseInt(process.env.PORT || '0', 10) || Bakery.config.port,
+  port: parseInt(process.env.PORT || '0', 10) ?? Bakery.config.port,
   hostname: Bakery.config.host,
   maxRequestBodySize: Bakery.config.maxBodySize,
 
   async fetch(req) {
     const path = new URL(req.url).pathname
     req.startNs = Bun.nanoseconds()
-    deferredValue(req, 'session', () => Session.from(req))
+    deferredValue(req, 'session', Session.from)
 
     const resp: Handler.Response | symbol = await Try.return(
       async function fetchHandler() {

@@ -454,7 +454,9 @@ function checkCsrfMiddleware(req: Request, path: string) {
   const origin = req.headers.get('origin') || req.headers.get('referer') || ''
   const requestedWith = req.headers.get('x-requested-with') || ''
   const host = Bakery.config.host
-  const port = String(process.env.PORT || Bakery.config.port)
+  const port = String(
+    process.env.PORT || Bakery.server?.port || Bakery.config.port || 0,
+  )
   const allowedOrigins = [
     `http://${host}:${port}`,
     `https://${host}:${port}`,
@@ -474,9 +476,7 @@ function checkCsrfMiddleware(req: Request, path: string) {
 function getClientIp(req: Request): string {
   const forwarded = req.headers.get('x-forwarded-for')
   if (forwarded) return forwarded.split(',')[0].trim()
-  return (
-    Bakery.server?.requestIP(req)?.address || '127.0.0.1'
-  )
+  return Bakery.server?.requestIP(req)?.address || '127.0.0.1'
 }
 
 function isAllowedIp(ip: string, whitelist: string[] = []): boolean {

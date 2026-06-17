@@ -68,28 +68,44 @@ export const Math2 = {
   },
 }
 
-export function deferredValue<O, T>(
+const DEFERRED = Symbol('deferred')
+export function deferredValue<O extends object, T>(
   object: O,
   key: string,
   value: (this: O, o: O) => T,
 ) {
-  let init = false
-  let data: T | undefined
+  if (!(DEFERRED in object)) {
+    Object.defineProperty(object, DEFERRED, {
+      enumerable: false,
+      configurable: false,
+      writable: false,
+      value: {},
+    })
+  }
+
+  const map = (object as any)[DEFERRED] as MapOf<any>
 
   Object.defineProperty(object, key, {
     enumerable: true,
     configurable: true,
     get() {
-      if (init) return data as T
-      init = true
-      data = value.call(this, this)
-      return data as T
+      if (key in map) return map[key]
+      map[key] = value.call(this, this)
+      return map[key]
     },
     set(val) {
-      init = true
-      data = val
+      map[key] = val
     },
   })
+}
+
+export function hasDeferredValue<
+  O extends object,
+  T extends keyof O | (string & {}),
+>(object: object, key: T): boolean {
+  if (!(DEFERRED in object)) return false
+  const map = object[DEFERRED] as MapOf<any>
+  return key in map
 }
 
 export function assert(condition: any, message?: string): asserts condition {
@@ -101,4 +117,3 @@ export function throws(message: string | Error): never {
 }
 
 export const any = <T = any>(x: any): T => x
-

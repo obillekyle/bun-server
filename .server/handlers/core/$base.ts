@@ -349,7 +349,6 @@ export async function getRoutes(
     if (!includes.match(path)) continue
 
     const relativePath = relative(folder, safePath)
-    console.log(`Found route file: ${relativePath}`)
     const [name, ext] = splitFileName(relativePath)
     const isDynamic = name.match(RX_DYNAMIC)
 

@@ -56,9 +56,11 @@ export async function setupServer(): Promise<void> {
 
 export async function runStartupBanner(): Promise<void> {
   const host = Bakery.config.host
-  const port = process.env.PORT
+  let port = process.env.PORT
     ? parseInt(process.env.PORT, 10)
     : Bakery.config.port
+
+  port ||= Bakery.server?.port || 0
 
   serveLog.SERVER_STARTED()
 

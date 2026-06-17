@@ -1,4 +1,5 @@
 import { Bakery } from '@server/core/bakery'
+import { hasDeferredValue } from '@server/utils'
 import { TieredCache } from '../cache/tiered'
 import {
   DEFAULT_SESSION_PERSIST,
@@ -36,11 +37,9 @@ export class Session<
   }
 
   public static getCookie(req: Request): string {
-    let sessionCookie = ''
-    const rawReq = req as any
-    const session: Session | undefined = rawReq._session
+    if (!hasDeferredValue(req, 'session')) return ''
 
-    if (!session?.isModified) return sessionCookie
+    const session = req.session
 
     Session.cache.set(session.id, session)
     Session.cache.flushToDisk()
@@ -48,11 +47,9 @@ export class Session<
     const time = DEFAULT_SESSION_PERSIST / 1000
     const hasPersistedKeys = session.persistedKeys.length > 0
 
-    sessionCookie = hasPersistedKeys
+    return hasPersistedKeys
       ? `sId=${session.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${time}`
       : `sId=${session.id}; Path=/; HttpOnly; SameSite=Lax`
-
-    return sessionCookie
   }
 
   public static saveFile() {
