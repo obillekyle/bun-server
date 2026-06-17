@@ -38,6 +38,7 @@ export class Session<
 
   public static getCookie(req: Request): string {
     if (!hasDeferredValue(req, 'session')) return ''
+    if (!req.session.modified) return ''
 
     const session = req.session
 
