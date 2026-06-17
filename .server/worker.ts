@@ -29,8 +29,12 @@ try {
 
 await printStartupRoutes()
 
+const PORT = process.env.PORT
+  ? parseInt(process.env.PORT, 10)
+  : Bakery.config.port
+
 Bakery.server = Bun.serve({
-  port: parseInt(process.env.PORT || '0', 10) ?? Bakery.config.port,
+  port: PORT,
   hostname: Bakery.config.host,
   maxRequestBodySize: Bakery.config.maxBodySize,
 
