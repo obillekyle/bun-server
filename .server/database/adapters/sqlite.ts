@@ -273,6 +273,7 @@ export class SQLiteAdapter extends DBAdapter {
         dbConstraints[tName][Case.camel(col.name)] = buildColumnConstraint(
           col,
           table.sql,
+          this.dateNowDefaults,
         )
       }
     }
@@ -333,19 +334,30 @@ function mapSqlToTsType(sqlType: string): SyncTypes.ColumnConstraint['type'] {
   return 'string'
 }
 
-function parseSqliteDefault(def: any): any {
+function parseSqliteDefault(def: any, dateNowDefaults: string[]): any {
   switch (true) {
     case def === null:
       return null
     case def === undefined:
       return undefined
     case typeof def === 'string' &&
-      (def.startsWith("'") || def.startsWith('"')):
-      return def.slice(1, -1)
+      (def.startsWith("'") || def.startsWith('"')): {
+      const unquoted = def.slice(1, -1)
+      // Stale literal '%dateNow%' must stay quoted so norm() doesn't collapse it
+      // to match the TS sentinel, allowing the diff to detect it needs migration.
+      if (unquoted === '%dateNow%') return def
+      return unquoted
+    }
     case typeof def === 'string' && def.toUpperCase() === 'NULL':
       return null
     case typeof def === 'string' && !Number.isNaN(Number(def)):
       return Number(def)
+    case typeof def === 'string' && dateNowDefaults.some(dVal => {
+      const norm = def.replace(/[()]/g, '').trim().toUpperCase()
+      const normD = dVal.replace(/[()]/g, '').trim().toUpperCase()
+      return norm === normD || norm.includes(normD)
+    }):
+      return '%dateNow%'
     default:
       return def
   }
@@ -354,6 +366,7 @@ function parseSqliteDefault(def: any): any {
 function buildColumnConstraint(
   col: any,
   tableSql: string,
+  dateNowDefaults: string[],
 ): SyncTypes.ColumnConstraint {
   const primary = col.pk > 0
   const cons: SyncTypes.ColumnConstraint = {
@@ -371,7 +384,7 @@ function buildColumnConstraint(
 
   if (col.notnull === 0 && !primary) cons.nullable = true
 
-  const parsedDef = parseSqliteDefault(col.dflt_value)
+  const parsedDef = parseSqliteDefault(col.dflt_value, dateNowDefaults)
   if (parsedDef !== undefined) cons.default = parsedDef
 
   return cons

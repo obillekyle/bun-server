@@ -1,6 +1,6 @@
-import { Bakery } from '@server/core/bakery'
-import { assert, is } from '@server/utils/common'
 import { Strings } from '@server/cache/string'
+import { Bakery } from '@server/core/bakery'
+import { is } from '@server/utils/common'
 import { FileSystem as fs } from '@server/utils/fs'
 
 import pkg from '../../package.json' with { type: 'json' }
@@ -65,7 +65,44 @@ function preprocessImports(source: string, filePath: fs.AbsolutePath): string {
 export async function compile(path: fs.AbsolutePath): Promise<string> {
   let source = await Bun.file(path).text()
   source = preprocessImports(source, path)
-  return getTranspiler().transformSync(source)
+  const content = await getTranspiler().transform(source)
+
+  const importRegex = /\b(from|import)(\s*\(?\s*)(["'])([^"']+)\3(\)?)/g
+  const matches = [...content.matchAll(importRegex)]
+
+  if (!matches.length) return content
+
+  const { dir } = fs.parse(path)
+  const serveRoot = Bakery.serveRoot
+  const importMap = Bakery.config.importMap
+  const mapKeys = Object.keys(importMap)
+
+  const replacements = await Promise.all(
+    matches.map(
+      async ([fullMatch, keyword, spacing, quote, importPath, closing]) => {
+        const hasExtension = (importPath.split('/').pop() || '').includes('.')
+        if (hasExtension) return fullMatch
+
+        const prefix = mapKeys.find(k => importPath.startsWith(k))
+
+        if (!prefix && !importPath.startsWith('.')) return fullMatch
+
+        const targetPath = prefix
+          ? fs.resolve(
+              serveRoot,
+              importMap[prefix],
+              importPath.slice(prefix.length),
+            )
+          : fs.resolve(dir, importPath)
+
+        const isDir = await fs.isDir(targetPath)
+
+        return `${keyword}${spacing}${quote}${importPath}${isDir ? '/index' : ''}.js${quote}${closing}`
+      },
+    ),
+  )
+
+  return content.replace(importRegex, () => replacements.shift()!)
 }
 
 type CompileResult = {

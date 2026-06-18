@@ -46,11 +46,12 @@ async function sharedHandler(
   const errorData = errors || (this as any).DEFAULT_ERROR
   const routeInfo = await this.resolveRoute(path, errorData)
   if (!routeInfo) return response.error('Not Found')
+  const filePath = routeInfo.info.path
 
-  const modulePath = fs.resolve(Bakery.serveRoot, routeInfo.info.path)
+  const modulePath = fs.resolve(Bakery.serveRoot, filePath)
   const params = routeInfo.params || {}
   if (import.meta.env.DEV) {
-    params.__file = routeInfo.info.path
+    params.__file = filePath
   }
   const finalParams = Object.assign({}, params, errorData)
   const body = await this.params(req, finalParams)
@@ -64,6 +65,17 @@ async function sharedHandler(
       ? resData
       : jsonResponse(code, 'Success', resData)
   }
+
+  const [hasTs, hasCss] = await Promise.all([
+    fs.exists(modulePath.replace(/\.tsx$/, '.ts')),
+    fs.exists(modulePath.replace(/\.tsx$/, '.css')),
+  ])
+
+  const style = filePath.replace(/\.tsx$/, '.css')
+  const tsUrl = filePath.replace(/\.tsx$/, '.js')
+
+  params.$$body = hasTs ? `<script src="/${tsUrl}" type="module"></script>` : ''
+  params.$$head = hasCss ? `<link rel="stylesheet" href="/${style}">` : ''
 
   const html = await injectIfHtml(resData, params)
   if (html) return html

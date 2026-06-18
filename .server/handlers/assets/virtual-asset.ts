@@ -1,10 +1,9 @@
-import { relative } from 'node:path/posix'
 import { Strings } from '@server/cache/string'
 import { compile } from '@server/compiler'
 import { Bakery } from '@server/core/bakery'
 import { toHash } from '@server/utils'
 import { FileSystem as fs } from '@server/utils/fs'
-import { Handler, type Route } from '../core/$base'
+import { Handler } from '../core/$base'
 
 export class VirtualAssetHandler extends Handler {
   static canHandle(path: string) {
@@ -32,7 +31,7 @@ export class VirtualAssetHandler extends Handler {
         isRoot: false,
         fileName: '(virtual)',
       },
-    } as MapOf<Route.Meta>
+    } as MapOf<Handler.Route.Meta>
   }
 
   static get clientAssets(): MapOf<string> {
@@ -45,7 +44,7 @@ export class VirtualAssetHandler extends Handler {
     }
   }
 
-  static async handleClientAsset(path: string): Promise<Route.Info | null> {
+  static async handleClientAsset(path: string) {
     const masterPath = this.clientAssets[path]
     if (!masterPath) return null
 
@@ -66,18 +65,17 @@ export class VirtualAssetHandler extends Handler {
 
     if (!cachedFile) return null
 
-    const routeInfo: Route.Info = {
-      file: cachedFile,
-      valid: true,
-      path: relative(fs.cwd, masterPath),
-      params: [],
-    }
+    const routeInfo = new Handler.Route.Info(
+      cachedFile.name!,
+      path.slice(1),
+      [],
+    )
 
     this.cache.set(path, routeInfo)
     return routeInfo
   }
 
-  static async handleVirtualAsset(path: string): Promise<Route.Info | null> {
+  static async handleVirtualAsset(path: string) {
     const id = path.slice('/_virtual/'.length)
     const resolvedPath = Strings.getValue(id)
     if (!resolvedPath) return null
@@ -99,12 +97,11 @@ export class VirtualAssetHandler extends Handler {
 
     if (!cachedFile) return null
 
-    const routeInfo: Route.Info = {
-      valid: true,
-      file: cachedFile,
-      path: relative(fs.cwd, resolvedPath),
-      params: [],
-    }
+    const routeInfo = new Handler.Route.Info(
+      cachedFile.name!,
+      path.slice(1),
+      [],
+    )
 
     this.cache.set(path, routeInfo)
     return routeInfo
@@ -121,7 +118,7 @@ export class VirtualAssetHandler extends Handler {
 
   static async handle(path: string) {
     const route = this.cache.get(path)
-    if (route) return route.file
+    if (route?.valid) return route.file
 
     return (await this.getRouteInfo(path))?.file
   }

@@ -108,7 +108,7 @@ export class Handler {
       constructor(
         public readonly filePath: fs.AbsolutePath,
         public readonly path: fs.RelativePath,
-        public readonly params: string[],
+        public readonly params: string[] = [],
       ) {}
 
       get file() {
@@ -390,8 +390,11 @@ export async function getSingleRoute(
   path = path.replace(/^\/+/, '')
 
   const parsed = fs.parse(path)
-  const targetPath = fs.resolve(folder, parsed.dir, parsed.name)
+  const dir = fs.resolve(folder, parsed.dir)
+  const targetPath = fs.resolve(dir, parsed.name)
   const exts = ext.join(',').replaceAll('.', '')
+
+  if (!fs.exists(dir)) return null
 
   const possibleGlob = Glob.from(`${targetPath}{/index,}.{${exts}}`)
 

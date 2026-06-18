@@ -327,7 +327,7 @@ export class MySQLAdapter extends DBAdapter {
 
       for (const col of cols) {
         dbConstraints[tName][Case.camel(col.column_name)] =
-          parseMySQLColumnConstraint(col)
+          parseMySQLColumnConstraint(col, this.dateNowDefaults)
       }
     }
     return dbConstraints
@@ -418,7 +418,7 @@ function mapMySqlTypeToTsType(
   return 'string'
 }
 
-function parseMySQLColumnConstraint(col: any): SyncTypes.ColumnConstraint {
+function parseMySQLColumnConstraint(col: any, dateNowDefaults: string[]): SyncTypes.ColumnConstraint {
   const primary = col.column_key === 'PRI'
   const cons: SyncTypes.ColumnConstraint = {
     type: mapMySqlTypeToTsType(String(col.data_type || col.column_type || '')),
@@ -441,6 +441,19 @@ function parseMySQLColumnConstraint(col: any): SyncTypes.ColumnConstraint {
       break
     case typeof def === 'string' && !Number.isNaN(Number(def)):
       def = Number(def)
+      break
+    case typeof def === 'string' && dateNowDefaults.some(dVal => {
+      const norm = def.replace(/[()]/g, '').trim().toUpperCase()
+      const normD = dVal.replace(/[()]/g, '').trim().toUpperCase()
+      return norm === normD || norm.includes(normD)
+    }):
+      def = '%dateNow%'
+      break
+    // MySQL returns string defaults without quotes; a stale '%dateNow%' literal
+    // would silently match the TS sentinel after norm(). Wrap in quotes so the
+    // diff detects it as needing migration.
+    case typeof def === 'string' && def === '%dateNow%':
+      def = `'${def}'`
       break
   }
   if (def !== undefined) cons.default = def

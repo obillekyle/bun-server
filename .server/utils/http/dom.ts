@@ -92,7 +92,14 @@ export namespace DOMTools {
   }
 
   export function params(params: MapOf<string>) {
-    const json = JSON.stringify(params).replace(/</g, '\\u003c')
+    const newParams: MapOf<string> = {}
+
+    for (const [k, v] of Object.entries(params)) {
+      if (k.startsWith('$$')) continue
+      newParams[k] = v
+    }
+
+    const json = JSON.stringify(newParams).replace(/</g, '\\u003c')
     return `<script>window.__PAGE_PARAMS__ = ${json}</script>`
   }
 

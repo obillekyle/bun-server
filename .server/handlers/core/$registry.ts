@@ -67,6 +67,7 @@ export class HandlerMap<T extends typeof Handler = typeof Handler> extends Map<
   handle(path: string, ...params: any[]): Handler.Response
   async handle(path: string, ...params: any[]) {
     const handler: any = await this.resolve(path, ...params)
+
     return handler ? handler.handle(path, ...params) : null
   }
 }

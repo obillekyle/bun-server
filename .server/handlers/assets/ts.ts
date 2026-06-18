@@ -20,10 +20,12 @@ export class TSHandler extends DynamicHandler {
   static async canHandle(path: string, req: Request) {
     if (path.endsWith('.ts')) return true
     if (path.endsWith('.js')) path = path.slice(0, -3)
+
     return await super.canHandle(path, req)
   }
 
   static async handle(path: string) {
+    if (path.endsWith('.js')) path = path.slice(0, -3)
     const routeInfo = await this.resolveRoute(path)
     if (!routeInfo) return response.error('Not Found')
 

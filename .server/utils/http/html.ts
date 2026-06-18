@@ -73,12 +73,12 @@ function getConfigInjects() {
   return { head: cachedHeadInjects, body: cachedBodyInjects }
 }
 
-export function assembleHtml(content: string, params?: MapOf<string>) {
+export function assembleHtml(content: string, params: MapOf<string> = {}) {
   const configInjects = getConfigInjects()
-  const paramsStr = DOMTools.params(params || {})
+  const paramsStr = DOMTools.params(params)
 
-  const headInjects = configInjects.head + paramsStr
-  const bodyInjects = configInjects.body
+  const headInjects = configInjects.head + paramsStr + (params.$$head || '')
+  const bodyInjects = configInjects.body + (params.$$body || '')
 
   let html = content
 

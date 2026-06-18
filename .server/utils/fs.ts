@@ -147,7 +147,8 @@ export namespace FileSystem {
   }
 
   export async function isDir(path: string) {
-    return (await Try.silent(Bun.file(path).stat()))?.isDirectory() || false
+    if (!exists(path)) return false
+    return (await Try(() => Bun.file(path).stat()))?.isDirectory() || false
   }
 
   export function exists(path: string | Bun.BunFile): boolean {

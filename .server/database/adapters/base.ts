@@ -338,6 +338,8 @@ export abstract class DBAdapter {
         return ` DEFAULT ${def ? boolTrue : boolFalse}`
       case typeof def === 'number' || typeof def === 'bigint':
         return ` DEFAULT ${def}`
+      case typeof def === 'string' && def === '%dateNow%':
+        return ` DEFAULT (${this.dateNowDefaults[0]})`
       default:
         return ` DEFAULT '${String(def).replace(/'/g, "''")}'`
     }

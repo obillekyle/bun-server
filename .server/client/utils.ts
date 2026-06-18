@@ -361,6 +361,13 @@ if (typeof document !== 'undefined') {
 
     specScript.textContent = JSON.stringify({
       prefetch: [{ source: 'list', urls: Array.from(urls) }],
+      prerender: [
+        {
+          source: 'document',
+          where: { href_matches: '/*' },
+          eagerness: 'eager',
+        },
+      ],
     })
 
     document.head.appendChild(specScript)

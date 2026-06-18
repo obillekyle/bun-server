@@ -5,8 +5,8 @@ import { DynamicHandler, type Handler, type Route } from '../core/$base'
 import { ErrorHandler } from '../core/$error'
 
 export class ApiHandler extends DynamicHandler {
-  static canHandle(path: string, req: Request) {
-    return path.startsWith('/api/') || super.canHandle(path, req)
+  static canHandle(path: string) {
+    return path.startsWith('/api/')
   }
 
   static get config() {

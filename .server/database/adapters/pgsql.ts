@@ -369,7 +369,7 @@ export class PGAdapter extends DBAdapter {
       for (const col of cols) {
         const primary = pkMap[t.table_name]?.has(col.column_name) || false
         dbConstraints[tName][Case.camel(col.column_name)] =
-          parsePGColumnConstraint(col, primary)
+          parsePGColumnConstraint(col, primary, this.dateNowDefaults)
       }
     }
     return dbConstraints
@@ -437,6 +437,7 @@ function mapPgTypeToTsType(
 function parsePGColumnConstraint(
   col: any,
   primary: boolean,
+  dateNowDefaults: string[],
 ): SyncTypes.ColumnConstraint {
   const cons: SyncTypes.ColumnConstraint = {
     type: mapPgTypeToTsType(String(col.data_type || col.udt_name || '')),
@@ -458,6 +459,20 @@ function parsePGColumnConstraint(
       break
     case typeof def === 'string' && !Number.isNaN(Number(def)):
       def = Number(def)
+      break
+    case typeof def === 'string' && dateNowDefaults.some(dVal => {
+      const norm = def.replace(/[()]/g, '').trim().toUpperCase()
+      const normD = dVal.replace(/[()]/g, '').trim().toUpperCase()
+      return norm === normD || norm.includes(normD)
+    }):
+      def = '%dateNow%'
+      break
+    // Guard: PgSQL returns string defaults as `'value'::text`; a stale '%dateNow%'
+    // literal in any form must not silently match the TS sentinel after norm().
+    // Keep the raw string so the diff detects it as needing migration.
+    case typeof def === 'string' && def.replace(/[()'::\w]+$/, '').trim() === '%dateNow%':
+    case typeof def === 'string' && def === '%dateNow%':
+      def = `'${def}'`
       break
   }
   if (def !== undefined) cons.default = def

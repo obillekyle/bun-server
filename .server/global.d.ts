@@ -1,4 +1,5 @@
 import type * as _schema from '~/schema'
+import type { Session } from './core/session'
 import type { Handler } from './handlers/core/$base'
 import type * as HandlerError from './handlers/core/$error'
 import type * as HandlerRegistry from './handlers/core/$registry'
@@ -289,7 +290,7 @@ declare global {
 
   interface Request {
     startNs: number
-    session: _session.Session<SessionData>
+    session: Session<SessionData>
   }
 
   type HandlerName = string & {}

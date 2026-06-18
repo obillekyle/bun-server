@@ -35,10 +35,12 @@ export class SchemaBuilder {
       case hasDefault: {
         const isStr = typeof def === 'string'
         const norm = isStr ? (def as string).replace(/[()]/g, '').trim() : ''
-        const isDateNow = adapter.dateNowDefaults.some(dVal => {
-          const normD = dVal.replace(/[()]/g, '').trim().toUpperCase()
-          return norm === normD || norm.includes(normD)
-        })
+        const isDateNow =
+          def === '%dateNow%' ||
+          adapter.dateNowDefaults.some(dVal => {
+            const normD = dVal.replace(/[()]/g, '').trim().toUpperCase()
+            return norm === normD || norm.includes(normD)
+          })
 
         return isStr && isDateNow
           ? 'dateNow'
